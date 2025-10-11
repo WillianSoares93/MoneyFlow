@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciador Financeiro Pessoal</title>
+    <!-- Inclui o Tailwind CSS para estilização moderna e responsiva -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos personalizados para o tema escuro e transições */
+        :root {
+            --color-primary: #8b5cf6; /* purple-500 */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* gray-900 */
+        }
+        .text-shadow {
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        }
+        /* Garantindo que o conteúdo principal não fique escondido atrás do navbar mobile */
+        @media (max-width: 640px) {
+            #main-content {
+                padding-bottom: 5rem; /* Espaço para o navbar inferior */
+            }
+        }
+        .modal-overlay {
+            transition: opacity 0.3s ease;
+        }
+        /* Estilo para o botão FAB (Floating Action Button) */
+        #fab-button {
+            transition: transform 0.2s ease, background-color 0.2s ease;
+        }
+        #fab-button:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 min-h-screen">
+    <!-- Contêiner Principal -->
+    <div id="app-container" class="min-h-screen flex flex-col sm:flex-row">
+        <!-- Loader Inicial -->
+        <div id="loader" class="flex items-center justify-center min-h-screen w-full text-white">
+            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-purple-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Carregando Gerenciador Financeiro...
+        </div>
+
+        <!-- Conteúdo do Aplicativo (Oculto até carregar) -->
+        <div id="content-wrapper" class="hidden flex-1 flex flex-col sm:flex-row">
+            
+            <!-- Navbar (será preenchida via JS) -->
+            <nav id="navbar-container" class="bg-gray-800 shadow-lg border-b border-gray-700 fixed bottom-0 w-full z-10 sm:relative sm:w-auto sm:block"></nav>
+
+            <!-- Área Principal de Conteúdo -->
+            <main id="main-content" class="flex-1 pb-16 sm:pb-0 overflow-auto">
+                <!-- Header Mobile -->
+                <header class="bg-gray-800 p-4 sm:p-6 shadow-xl sticky top-0 z-10 sm:hidden">
+                    <h1 class="text-2xl font-bold text-white">Finanças Pessoais</h1>
+                </header>
+                
+                <!-- Conteúdo da Visão (Dashboard/Contas/etc) -->
+                <div id="view-content"></div>
+            </main>
+        </div>
+
+        <!-- Botão Flutuante de Ação (FAB) - Apenas Mobile -->
+        <button id="fab-button" class="fixed bottom-20 right-4 z-40 p-4 bg-purple-600 text-white rounded-full shadow-2xl hover:bg-purple-700 transition duration-200 sm:hidden focus:ring-4 focus:ring-purple-300" aria-label="Adicionar Nova Transação">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+        </button>
+
+        <!-- Modal (será preenchido via JS) -->
+        <div id="modal-overlay" class="modal-overlay hidden fixed inset-0 bg-black bg-opacity-70 items-center justify-center z-50 p-4">
+            <div id="modal-content-wrapper" class="bg-gray-800 rounded-xl shadow-2xl max-w-lg w-full transform scale-100" onclick="event.stopPropagation()">
+                <!-- Conteúdo do Modal (Conta ou Transação/Autenticação) -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts do Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, onSnapshot, doc, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- 1. BLOCO DE CONFIGURAÇÃO PARA DEPLOY NO VERCEL/GITHUB ---
+        // Se você estiver hospedando este arquivo diretamente (ex: Vercel/GitHub), 
+        // SUBSTITUA ESTE OBJETO PELA SUA CONFIGURAÇÃO REAL DO PROJETO FIREBASE.
+        // Se você não substituir, o aplicativo continuará no MODO MOCK.
+
+        const USER_FIREBASE_CONFIG = {
+            apiKey: "SEU_API_KEY_AQUI", // <-- SUBSTITUA ISSO
+            authDomain: "SEU_PROJETO_AQUI.firebaseapp.com", // <-- SUBSTITUA ISSO
+            projectId: "seu-project-id", // <-- SUBSTITUA ISSO
+            storageBucket: "seu-project-id.appspot.com",
+            messagingSenderId: "SEU_SENDER_ID",
+            appId: "SEU_APP_ID"
+        };
+        
+        // --- Variáveis Globais de Configuração e Estado ---
+        // A lógica abaixo determina se estamos no ambiente Canvas/Vercel ou em um arquivo local/mock.
+        const IS_RUNNING_IN_CANVAS = typeof __firebase_config !== 'undefined';
+        
+        // Determina a configuração a ser usada
+        let firebaseConfig;
+        if (IS_RUNNING_IN_CANVAS) {
+            // Se estiver no ambiente Canvas, usa a configuração injetada
+            firebaseConfig = JSON.parse(__firebase_config);
+        } else if (USER_FIREBASE_CONFIG.apiKey === "SEU_API_KEY_AQUI") {
+            // Se estiver fora do Canvas E o usuário não substituiu a chave, usa o MOCK
+            firebaseConfig = { apiKey: "dummy", authDomain: "dummy.firebaseapp.com", projectId: "dummy-project" };
+        } else {
+            // Se o usuário inseriu sua própria chave, usa a do usuário
+            firebaseConfig = USER_FIREBASE_CONFIG;
+        }
+
+        const IS_MOCK_MODE = firebaseConfig.apiKey === "dummy"; // Flag para o modo local
+        const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId; // Usa o Project ID como fallback para o App ID
+        
+        let db, auth;
+        let userId = null;
+        let accounts = [];
+        let transactions = [];
+        let currentView = 'dashboard'; // 'dashboard', 'accounts', 'transactions', 'reports'
+        
+        // --- Funções de Persistência Local (Modo Mock Apenas) ---
+        
+        const LOCAL_STORAGE_KEY_ACCOUNTS = 'finance_mock_accounts';
+        const LOCAL_STORAGE_KEY_TRANSACTIONS = 'finance_mock_transactions';
+
+        const saveLocalData = () => {
+            if (!IS_MOCK_MODE) return;
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY_ACCOUNTS, JSON.stringify(accounts));
+                localStorage.setItem(LOCAL_STORAGE_KEY_TRANSACTIONS, JSON.stringify(transactions));
+                // console.log('Dados salvos no localStorage.');
+            } catch (e) {
+                console.error('Erro ao salvar no localStorage:', e);
+            }
+        };
+
+        const loadLocalData = () => {
+            if (!IS_MOCK_MODE) return;
+            try {
+                const storedAccounts = localStorage.getItem(LOCAL_STORAGE_KEY_ACCOUNTS);
+                const storedTransactions = localStorage.getItem(LOCAL_STORAGE_KEY_TRANSACTIONS);
+
+                if (storedAccounts) {
+                    accounts = JSON.parse(storedAccounts);
+                }
+                if (storedTransactions) {
+                    transactions = JSON.parse(storedTransactions);
+                    transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                }
+                // console.log('Dados carregados do localStorage.');
+
+            } catch (e) {
+                console.error('Erro ao carregar do localStorage:', e);
+            }
+        };
+        
+        // --- Funções Auxiliares (DOM e UI) ---
+
+        const formatCurrency = (value) => {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        };
+
+        const getCategoryColor = (category) => {
+            switch (category) {
+                case 'Alimentação': return 'bg-yellow-600/20 text-yellow-300';
+                case 'Transporte': return 'bg-blue-600/20 text-blue-300';
+                case 'Moradia': return 'bg-red-600/20 text-red-300';
+                case 'Salário': return 'bg-green-600/20 text-green-300';
+                case 'Investimento': return 'bg-indigo-600/20 text-indigo-300';
+                case 'Lazer': return 'bg-pink-600/20 text-pink-300';
+                case 'Saúde': return 'bg-teal-600/20 text-teal-300';
+                default: return 'bg-gray-600/20 text-gray-400';
+            }
+        };
+
+        const calculateBalances = () => {
+            if (!accounts.length) return [];
+            
+            return accounts.map(account => {
+                const balanceChange = transactions
+                    .filter(t => t.accountId === account.id)
+                    .reduce((sum, t) => {
+                        const amount = parseFloat(t.amount);
+                        return t.type === 'Receita' ? sum + amount : sum - amount;
+                    }, 0);
+
+                const initialBalance = parseFloat(account.initialBalance || 0);
+                const currentBalance = initialBalance + balanceChange;
+                return {
+                    ...account,
+                    currentBalance: currentBalance,
+                };
+            });
+        };
+
+        const setView = (newView) => {
+            currentView = newView;
+            updateUI();
+        };
+
+        const openModal = (type) => {
+            if (type === 'auth') {
+                renderAuthModal('login');
+            } else {
+                renderModalContent(type);
+            }
+            document.getElementById('modal-overlay').classList.remove('hidden');
+            document.getElementById('modal-overlay').classList.add('flex');
+        };
+
+        const closeModal = () => {
+            document.getElementById('modal-overlay').classList.add('hidden');
+            document.getElementById('modal-overlay').classList.remove('flex');
+            document.getElementById('modal-content-wrapper').innerHTML = '';
+        };
+
+        // --- Funções de Renderização de UI ---
+
+        const renderNavbar = () => {
+            const navItems = [
+                { name: 'Visão Geral', view: 'dashboard', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>' },
+                { name: 'Contas', view: 'accounts', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>' },
+                { name: 'Transações', view: 'transactions', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-10 0h20a2 2 0 002-2V8a2 2 0 00-2-2H3a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>' },
+                { name: 'Relatórios', view: 'reports', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>' },
+            ];
+
+            let navHTML = `<div class="flex justify-around sm:flex-col sm:space-y-2 sm:p-4 sm:min-h-screen sm:w-60">`;
+            
+            navItems.forEach(item => {
+                const isActive = item.view === currentView;
+                navHTML += `
+                    <button data-view="${item.view}" 
+                        class="nav-button flex flex-col sm:flex-row items-center sm:items-start sm:justify-start space-y-1 sm:space-y-0 sm:space-x-3 p-3 sm:p-4 rounded-xl transition duration-200 w-full 
+                        ${isActive ? 'bg-purple-600 text-white shadow-xl' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}">
+                        ${item.icon}
+                        <span class="text-xs sm:text-sm font-medium">${item.name}</span>
+                    </button>`;
+            });
+
+            // Botão de Logout/Status
+            navHTML += `
+                <div class="mt-auto pt-6 border-t border-gray-700/50">
+                    <button onclick="handleSignOut()"
+                        class="flex flex-col sm:flex-row items-center sm:items-start sm:justify-start space-y-1 sm:space-y-0 sm:space-x-3 p-3 sm:p-4 rounded-xl transition duration-200 w-full text-red-400 hover:bg-red-800/20 hover:text-red-300">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                        <span class="text-xs sm:text-sm font-medium">Sair</span>
+                    </button>
+                    <div class="hidden sm:block mt-2 text-xs text-gray-500">
+                        ID: <span class="truncate block max-w-full text-gray-600">${userId || 'Desconectado'}</span>
+                    </div>
+                </div>
+            </div>`;
+            
+            navbarContainer.innerHTML = navHTML;
+
+            navbarContainer.querySelectorAll('.nav-button').forEach(button => {
+                button.addEventListener('click', () => setView(button.getAttribute('data-view')));
+            });
+        };
+
+        const renderTransactionItem = (t, calculatedAccounts) => {
+            const isExpense = t.type === 'Despesa';
+            const accountName = calculatedAccounts.find(a => a.id === t.accountId)?.name || 'Conta Desconhecida';
+            const dateFormatted = new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR');
+
+            const iconSvg = isExpense 
+                ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>'
+                : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>';
+
+            return `
+                <div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition duration-150">
+                    <div class="flex items-center space-x-3">
+                        <div class="p-2 rounded-full ${isExpense ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}">
+                            ${iconSvg}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="font-semibold text-white truncate max-w-[200px] sm:max-w-xs">${t.description}</p>
+                            <div class="text-xs text-gray-400 flex flex-wrap gap-x-2">
+                                <span class="${getCategoryColor(t.category) + " px-2 py-0.5 rounded-full"}">${t.category}</span>
+                                <span>${accountName}</span>
+                                <span>${dateFormatted}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3 ml-2">
+                        <p class="font-bold whitespace-nowrap ${isExpense ? 'text-red-400' : 'text-green-400'}">
+                            ${isExpense ? '-' : '+'} ${formatCurrency(t.amount)}
+                        </p>
+                        <button onclick="handleDeleteTransaction('${t.id}')" class="text-gray-500 hover:text-red-500 p-1 rounded-full transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderDashboard = (calculatedAccounts) => {
+            const totalBalance = calculatedAccounts.reduce((sum, account) => sum + account.currentBalance, 0);
+            const recentTransactions = transactions.slice(0, 5);
+
+            let accountsList = calculatedAccounts.slice(0, 5).map(account => `
+                <div class="flex justify-between items-center p-3 bg-gray-700 rounded-lg">
+                    <div>
+                        <p class="font-semibold text-white">${account.name}</p>
+                        <p class="text-xs text-gray-400">${account.type}</p>
+                    </div>
+                    <p class="font-bold ${account.currentBalance >= 0 ? 'text-green-400' : 'text-red-400'}">
+                        ${formatCurrency(account.currentBalance)}
+                    </p>
+                </div>
+            `).join('');
+
+            if (!accounts.length) {
+                accountsList = '<p class="text-gray-500 text-center py-4">Adicione sua primeira conta!</p>';
+            }
+
+            let transactionsList = recentTransactions.map(t => renderTransactionItem(t, calculatedAccounts)).join('');
+            if (!transactions.length) {
+                transactionsList = '<p class="text-gray-500 text-center py-4">Nenhuma transação registrada ainda.</p>';
+            }
+
+            return `
+                <div class="p-4 sm:p-6 lg:p-8">
+                    <!-- Card de Saldo Total -->
+                    <div class="bg-gray-800 p-6 rounded-2xl shadow-xl mb-8 border border-purple-600/50">
+                        <p class="text-gray-400 text-sm uppercase tracking-wider mb-2">Saldo Total Consolidado</p>
+                        <h1 class="text-4xl sm:text-5xl font-extrabold text-white">
+                            ${formatCurrency(totalBalance)}
+                        </h1>
+                        <!-- Botão Desktop -->
+                        <div class="hidden sm:flex justify-end mt-4">
+                            <button onclick="openModal('transaction')"
+                                class="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <span>Nova Transação</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid lg:grid-cols-2 gap-8">
+                        <!-- Lista de Contas -->
+                        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl">
+                            <h2 class="text-xl font-bold text-white mb-4 flex justify-between items-center">
+                                Minhas Contas
+                                <button onclick="setView('accounts')" class="text-purple-400 hover:text-purple-300 text-sm">Ver Todas</button>
+                            </h2>
+                            <div class="space-y-3">${accountsList}</div>
+                        </div>
+
+                        <!-- Transações Recentes -->
+                        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl">
+                            <h2 class="text-xl font-bold text-white mb-4 flex justify-between items-center">
+                                Transações Recentes
+                                <button onclick="setView('transactions')" class="text-purple-400 hover:text-purple-300 text-sm">Ver Todas</button>
+                            </h2>
+                            <div class="space-y-3">${transactionsList}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderAccounts = (calculatedAccounts) => {
+            const totalBalance = calculatedAccounts.reduce((sum, account) => sum + account.currentBalance, 0);
+
+            let accountsGrid = calculatedAccounts.map(account => `
+                <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+                    <h3 class="text-xl font-bold text-white mb-1">${account.name}</h3>
+                    <p class="text-sm text-purple-400 mb-4">${account.type}</p>
+                    <div class="border-t border-gray-700 pt-4">
+                        <p class="text-sm text-gray-400">Saldo Atual</p>
+                        <p class="text-2xl font-extrabold ${account.currentBalance >= 0 ? 'text-green-400' : 'text-red-400'}">
+                            ${formatCurrency(account.currentBalance)}
+                        </p>
+                    </div>
+                </div>
+            `).join('');
+
+            if (!calculatedAccounts.length) {
+                accountsGrid = '<p class="text-gray-500 col-span-full text-center py-10">Nenhuma conta cadastrada.</p>';
+            }
+
+            return `
+                <div class="p-4 sm:p-6 lg:p-8">
+                    <h1 class="text-3xl font-bold text-white mb-6">Contas e Cartões</h1>
+                    <div class="mb-6 flex justify-between items-center">
+                        <p class="text-lg text-gray-300">Total em Contas: <span class="font-bold ${totalBalance >= 0 ? 'text-green-400' : 'text-red-400'}">${formatCurrency(totalBalance)}</span></p>
+                        <button onclick="openModal('account')"
+                            class="hidden sm:flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>Nova Conta</span>
+                        </button>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${accountsGrid}
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderTransactions = (calculatedAccounts) => {
+            let transactionsList = transactions.map(t => renderTransactionItem(t, calculatedAccounts)).join('');
+            
+            if (!transactions.length) {
+                transactionsList = '<p class="text-gray-500 text-center py-10">Nenhuma transação registrada.</p>';
+            }
+
+            return `
+                <div class="p-4 sm:p-6 lg:p-8">
+                    <h1 class="text-3xl font-bold text-white mb-6">Todas as Transações</h1>
+                    <div class="mb-6 flex justify-end">
+                        <button onclick="openModal('transaction')"
+                            class="hidden sm:flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>Nova Transação</span>
+                        </button>
+                    </div>
+                    <div class="bg-gray-800 rounded-xl p-4 shadow-xl">
+                        <div class="space-y-3">
+                            ${transactionsList}
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderReports = () => {
+            const expenseTransactions = transactions.filter(t => t.type === 'Despesa');
+            const spendingByCategory = expenseTransactions
+                .reduce((acc, t) => {
+                    const cat = t.category || 'Outros';
+                    acc[cat] = (acc[cat] || 0) + parseFloat(t.amount);
+                    return acc;
+                }, {});
+
+            const totalExpense = Object.values(spendingByCategory).reduce((sum, amount) => sum + amount, 0);
+
+            const reportData = Object.entries(spendingByCategory)
+                .map(([category, amount]) => ({
+                    category,
+                    amount,
+                    percentage: totalExpense > 0 ? (amount / totalExpense) * 100 : 0,
+                }))
+                .sort((a, b) => b.amount - a.amount);
+            
+            let reportList = '';
+
+            if (totalExpense === 0) {
+                reportList = '<p class="text-gray-500 text-center py-10">Não há despesas para gerar o relatório.</p>';
+            } else {
+                reportData.forEach(item => {
+                    reportList += `
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-white text-sm">
+                                <span class="font-semibold">${item.category}</span>
+                                <span class="font-bold">${formatCurrency(item.amount)} (${item.percentage.toFixed(1)}%)</span>
+                            </div>
+                            <div class="h-2 bg-gray-700 rounded-full overflow-hidden">
+                                <div
+                                    class="${getCategoryColor(item.category).replace(/bg-.*\/20/, 'bg-purple-500').replace(/text-.*$/, '')} h-full transition-all duration-500"
+                                    style="width: ${item.percentage}%"
+                                ></div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            return `
+                <div class="p-4 sm:p-6 lg:p-8">
+                    <h1 class="text-3xl font-bold text-white mb-6">Relatórios Avançados (Gastos por Categoria)</h1>
+                    <div class="bg-gray-800 p-6 rounded-2xl shadow-xl border border-gray-700">
+                        <h2 class="text-xl font-bold text-white mb-4">Análise de Despesas</h2>
+                        <p class="text-gray-400 mb-6">Total de Despesas Registradas: <span class="font-bold text-red-400">${formatCurrency(totalExpense)}</span></p>
+                        <div class="space-y-4">
+                            ${reportList}
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+        
+        const renderView = (calculatedAccounts) => {
+            switch (currentView) {
+                case 'dashboard':
+                    viewContent.innerHTML = renderDashboard(calculatedAccounts);
+                    break;
+                case 'accounts':
+                    viewContent.innerHTML = renderAccounts(calculatedAccounts);
+                    break;
+                case 'transactions':
+                    viewContent.innerHTML = renderTransactions(calculatedAccounts);
+                    break;
+                case 'reports':
+                    viewContent.innerHTML = renderReports();
+                    break;
+                default:
+                    viewContent.innerHTML = renderDashboard(calculatedAccounts);
+            }
+        };
+
+        const updateUI = () => {
+            const calculatedAccounts = calculateBalances();
+            renderNavbar();
+            renderView(calculatedAccounts);
+        };
+
+        // --- Funções de Login e Cadastro ---
+
+        const renderAuthModal = (mode) => {
+            const isLogin = mode === 'login';
+            const title = isLogin ? 'Fazer Login' : 'Criar Conta';
+            const buttonText = isLogin ? 'Entrar' : 'Cadastrar';
+            const switchText = isLogin ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Faça Login';
+
+            document.getElementById('modal-content-wrapper').innerHTML = `
+                <div class="p-6">
+                    <h3 class="text-2xl font-bold mb-6 text-white text-center">${title}</h3>
+                    <form id="auth-form">
+                        <div class="space-y-4">
+                            <input type="email" name="email" placeholder="E-mail" 
+                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
+                            <input type="password" name="password" placeholder="Senha" 
+                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
+                            <p id="auth-error-message" class="text-sm text-red-400"></p>
+                        </div>
+                        <button type="submit" class="w-full mt-6 px-4 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-lg hover:bg-purple-700 transition duration-200">
+                            ${buttonText}
+                        </button>
+                    </form>
+                    <button onclick="renderAuthModal('${isLogin ? 'signup' : 'login'}')" class="w-full text-center mt-4 text-sm text-gray-400 hover:text-purple-400 transition duration-200">
+                        ${switchText}
+                    </button>
+                </div>
+            `;
+            const form = document.getElementById('auth-form');
+            form.addEventListener('submit', (e) => handleAuthSubmit(e, isLogin));
+            
+            // Reabre o modal
+            document.getElementById('modal-overlay').classList.remove('hidden');
+            document.getElementById('modal-overlay').classList.add('flex');
+        };
+
+        const handleAuthSubmit = async (event, isLogin) => {
+            event.preventDefault();
+            const form = event.target;
+            const email = form.email.value;
+            const password = form.password.value;
+            const errorMessageElement = document.getElementById('auth-error-message');
+            errorMessageElement.textContent = ''; // Limpa a mensagem anterior
+
+            if (IS_MOCK_MODE) {
+                // Modo MOCK: Simula login bem-sucedido
+                errorMessageElement.textContent = 'Modo MOCK: Login simulado com sucesso! Os dados não serão salvos na nuvem.';
+                userId = "MOCK-USER-1234";
+                setupListeners(); // Carrega os dados locais
+                closeModal();
+                return;
+            }
+
+            try {
+                if (isLogin) {
+                    await signInWithEmailAndPassword(auth, email, password);
+                } else {
+                    await createUserWithEmailAndPassword(auth, email, password);
+                }
+                // O onAuthStateChanged tratará a UI após o sucesso
+            } catch (error) {
+                console.error("Erro de Autenticação:", error.code, error.message);
+                
+                let friendlyMessage = 'Erro de autenticação.';
+                switch(error.code) {
+                    case 'auth/user-not-found':
+                    case 'auth/wrong-password':
+                        friendlyMessage = 'E-mail ou senha inválidos.';
+                        break;
+                    case 'auth/email-already-in-use':
+                        friendlyMessage = 'Este e-mail já está em uso. Tente fazer login.';
+                        break;
+                    case 'auth/weak-password':
+                        friendlyMessage = 'A senha deve ter pelo menos 6 caracteres.';
+                        break;
+                    default:
+                        friendlyMessage = 'Ocorreu um erro. Verifique sua conexão e tente novamente.';
+                }
+                errorMessageElement.textContent = friendlyMessage;
+            }
+        };
+
+        window.handleSignOut = async () => {
+             if (IS_MOCK_MODE) {
+                userId = null;
+                accounts = [];
+                transactions = [];
+                currentView = 'dashboard';
+                updateUI();
+                openModal('auth');
+                console.warn("Sessão MOCK encerrada.");
+                return;
+            }
+
+            try {
+                await signOut(auth);
+                // onAuthStateChanged cuidará da transição da UI para a tela de login
+            } catch (error) {
+                console.error("Erro ao sair:", error);
+            }
+        };
+
+        // --- Funções do Modal de Dados ---
+        
+        // Mantidas as funções renderModalContent, setupTransactionTypeToggle, etc.
+        const getTransactionCategories = (type) => {
+            return type === 'Receita'
+                ? ['Salário', 'Investimento', 'Venda', 'Presente', 'Outros']
+                : ['Alimentação', 'Moradia', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Outros'];
+        };
+
+        const renderModalContent = (type) => {
+            const modalContentWrapper = document.getElementById('modal-content-wrapper');
+            if (type === 'account') {
+                modalContentWrapper.innerHTML = `
+                    <form id="account-form" class="p-6">
+                        <h3 class="text-xl font-bold mb-4 text-white">Adicionar Nova Conta/Cartão</h3>
+                        <div class="space-y-4">
+                            <input type="text" name="name" placeholder="Nome da Conta (ex: Nubank, Visa Crédito)" 
+                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
+                            <select name="type" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500">
+                                <option value="Conta Corrente">Conta Corrente</option>
+                                <option value="Poupança">Poupança</option>
+                                <option value="Cartão de Crédito">Cartão de Crédito</option>
+                                <option value="Carteira">Carteira (Dinheiro Físico)</option>
+                            </select>
+                            <input type="number" name="initialBalance" placeholder="Saldo Inicial (R$)" value="0"
+                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" step="0.01" required />
+                        </div>
+                        <div class="flex justify-end space-x-4 mt-6">
+                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition duration-200">
+                                Cancelar
+                            </button>
+                            <button type="submit" class="px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-lg hover:bg-purple-700 transition duration-200">
+                                Salvar Conta
+                            </button>
+                        </div>
+                    </form>
+                `;
+                document.getElementById('account-form').addEventListener('submit', handleAddAccount);
+
+            } else if (type === 'transaction') {
+                const defaultType = 'Despesa';
+                const defaultCategories = getTransactionCategories(defaultType);
+                const calculatedAccounts = calculateBalances();
+
+                let accountOptions = calculatedAccounts.map(account => `
+                    <option value="${account.id}">${account.name} (${formatCurrency(account.currentBalance)})</option>
+                `).join('');
+                
+                if (!accountOptions) {
+                     accountOptions = '<option value="" disabled>Adicione uma conta primeiro!</option>';
+                }
+
+                let categoryOptions = defaultCategories.map(cat => `
+                    <option value="${cat}">${cat}</option>
+                `).join('');
+                
+                const today = new Date().toISOString().substring(0, 10);
+
+                modalContentWrapper.innerHTML = `
+                    <form id="transaction-form" class="p-6">
+                        <h3 class="text-xl font-bold mb-4 text-white">Registrar Nova Transação</h3>
+                        <div class="space-y-4">
+                            <div class="flex space-x-4">
+                                <button type="button" data-type="Receita" id="btn-receita" 
+                                    class="flex-1 py-2 rounded-lg font-semibold transition duration-200 bg-gray-700 text-gray-300 hover:bg-gray-600">
+                                    Receita (+)
+                                </button>
+                                <button type="button" data-type="Despesa" id="btn-despesa" 
+                                    class="flex-1 py-2 rounded-lg font-semibold transition duration-200 bg-red-600 text-white shadow-md">
+                                    Despesa (-)
+                                </button>
+                            </div>
+
+                            <input type="text" name="description" placeholder="Descrição (ex: Almoço, Salário)" 
+                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
+                            <input type="number" name="amount" placeholder="Valor (R$)" min="0.01"
+                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" step="0.01" required />
+                            <select name="accountId" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required>
+                                <option value="">Selecione a Conta</option>
+                                ${accountOptions}
+                            </select>
+                            <select name="category" id="transaction-category" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required>
+                                <option value="">Selecione a Categoria</option>
+                                ${categoryOptions}
+                            </select>
+                            <input type="date" name="date" value="${today}"
+                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
+                            <input type="hidden" name="type" value="${defaultType}" id="transaction-type" />
+                        </div>
+                        <div class="flex justify-end space-x-4 mt-6">
+                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition duration-200">
+                                Cancelar
+                            </button>
+                            <button type="submit" class="px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-lg hover:bg-purple-700 transition duration-200">
+                                Registrar
+                            </button>
+                        </div>
+                    </form>
+                `;
+
+                // Adiciona listeners dinamicamente
+                const form = document.getElementById('transaction-form');
+                form.addEventListener('submit', handleAddTransaction);
+                setupTransactionTypeToggle(form);
+            }
+        };
+
+        const setupTransactionTypeToggle = (form) => {
+            const btnReceita = document.getElementById('btn-receita');
+            const btnDespesa = document.getElementById('btn-despesa');
+            const inputType = document.getElementById('transaction-type');
+            const selectCategory = document.getElementById('transaction-category');
+
+            const toggleType = (type) => {
+                const isReceita = type === 'Receita';
+                
+                // Atualiza o campo hidden
+                inputType.value = type;
+
+                // Atualiza o estilo dos botões
+                btnReceita.className = `flex-1 py-2 rounded-lg font-semibold transition duration-200 ${isReceita ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`;
+                btnDespesa.className = `flex-1 py-2 rounded-lg font-semibold transition duration-200 ${!isReceita ? 'bg-red-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`;
+
+                // Atualiza as opções de categoria
+                const categories = getTransactionCategories(type);
+                selectCategory.innerHTML = '<option value="">Selecione a Categoria</option>' + categories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+                selectCategory.value = categories.includes(selectCategory.value) ? selectCategory.value : ''; // Tenta manter a seleção
+            };
+
+            btnReceita.addEventListener('click', () => toggleType('Receita'));
+            btnDespesa.addEventListener('click', () => toggleType('Despesa'));
+        };
+
+        // --- Funções de Manipulação de Dados (CRUD Condicional) ---
+        
+        const handleAddAccount = async (event) => {
+            event.preventDefault();
+            
+            const data = new FormData(event.target);
+            const name = data.get('name');
+            const type = data.get('type');
+            const initialBalance = parseFloat(data.get('initialBalance'));
+
+            if (!name || initialBalance < 0) return;
+
+            const newAccount = {
+                id: (IS_MOCK_MODE ? 'acc-mock-' : 'acc-') + crypto.randomUUID(),
+                name,
+                type,
+                initialBalance,
+                createdAt: new Date().toISOString(),
+            };
+
+            if (IS_MOCK_MODE) {
+                // MOCK MODE: Adiciona ao array local
+                accounts.push(newAccount);
+                saveLocalData(); // Salva no localStorage
+                closeModal();
+                updateUI();
+            } else {
+                // FIREBASE MODE: Adiciona ao Firestore
+                if (!db || !userId) return console.error("Database or User not ready.");
+                // O caminho agora usa o ID de usuário do login:
+                const accountsColRef = collection(db, `users/${userId}/accounts`);
+                try {
+                    await addDoc(accountsColRef, newAccount);
+                    closeModal();
+                } catch (error) {
+                    console.error('Erro ao adicionar conta:', error);
+                }
+            }
+        };
+
+        const handleAddTransaction = async (event) => {
+            event.preventDefault();
+            
+            const data = new FormData(event.target);
+            const transactionData = {
+                description: data.get('description'),
+                amount: parseFloat(data.get('amount')),
+                type: data.get('type'),
+                accountId: data.get('accountId'),
+                category: data.get('category'),
+                date: data.get('date'),
+                createdAt: new Date().toISOString(),
+            };
+
+            if (!transactionData.description || !transactionData.accountId || transactionData.amount <= 0) return;
+            
+            const newTransaction = {
+                ...transactionData,
+                id: (IS_MOCK_MODE ? 'tr-mock-' : 'tr-') + crypto.randomUUID(),
+            };
+
+            if (IS_MOCK_MODE) {
+                // MOCK MODE: Adiciona ao array local e reordena
+                transactions.push(newTransaction);
+                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                saveLocalData(); // Salva no localStorage
+                closeModal();
+                updateUI();
+            } else {
+                // FIREBASE MODE: Adiciona ao Firestore
+                if (!db || !userId) return console.error("Database or User not ready.");
+                // O caminho agora usa o ID de usuário do login:
+                const transactionsColRef = collection(db, `users/${userId}/transactions`);
+                try {
+                    await addDoc(transactionsColRef, newTransaction);
+                    closeModal();
+                } catch (error) {
+                    console.error('Erro ao adicionar transação:', error);
+                }
+            }
+        };
+
+        window.handleDeleteTransaction = async (transactionId) => {
+            if (confirm(`Tem certeza que deseja deletar a transação ${transactionId}?`)) {
+                
+                if (IS_MOCK_MODE) {
+                    // MOCK MODE: Deleta do array local
+                    const initialLength = transactions.length;
+                    transactions = transactions.filter(t => t.id !== transactionId);
+                    if (transactions.length < initialLength) {
+                        saveLocalData(); // Salva no localStorage após a exclusão
+                        updateUI();
+                    }
+                } else {
+                    // FIREBASE MODE: Deleta do Firestore
+                    if (!db || !userId) return console.error("Database or User not ready.");
+                    const transactionDocRef = doc(db, `users/${userId}/transactions`, transactionId);
+
+                    try {
+                        await deleteDoc(transactionDocRef);
+                    } catch (error) {
+                        console.error('Erro ao deletar transação:', error);
+                    }
+                }
+            } else {
+                console.log('Exclusão de transação cancelada.');
+            }
+        };
+
+        // --- Inicialização e Listeners do Firebase ---
+
+        const setupListeners = () => {
+            if (IS_MOCK_MODE) {
+                loadLocalData(); 
+                return;
+            }
+
+            if (!db || !userId) return;
+            
+            // Note: Os caminhos do Firestore foram simplificados para 'users/{userId}/...'
+            const accountsColRef = collection(db, `users/${userId}/accounts`);
+            const transactionsColRef = collection(db, `users/${userId}/transactions`);
+
+            // Listener de Contas
+            onSnapshot(query(accountsColRef), (snapshot) => {
+                accounts = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    initialBalance: parseFloat(doc.data().initialBalance || 0),
+                }));
+                updateUI();
+            }, (error) => console.error("Erro ao buscar contas:", error));
+
+            // Listener de Transações
+            onSnapshot(query(transactionsColRef), (snapshot) => {
+                transactions = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    amount: parseFloat(doc.data().amount || 0),
+                })).sort((a, b) => new Date(b.date) - new Date(a.date));
+                updateUI();
+            }, (error) => console.error("Erro ao buscar transações:", error));
+        };
+
+        const showAppContent = () => {
+             // Esconde loader e mostra conteúdo
+            document.getElementById('loader').classList.add('hidden');
+            document.getElementById('content-wrapper').classList.remove('hidden');
+            document.getElementById('content-wrapper').classList.add('flex');
+            
+            // Inicia o App
+            setupListeners(); 
+            updateUI();
+        }
+
+        const hideAppContent = () => {
+            // Esconde conteúdo e volta para o loader (ou tela de login)
+            document.getElementById('content-wrapper').classList.add('hidden');
+            document.getElementById('content-wrapper').classList.remove('flex');
+            document.getElementById('loader').classList.remove('hidden');
+            document.getElementById('view-content').innerHTML = '';
+        }
+
+        const initApp = async () => {
+            
+            // --- 2. INICIALIZAÇÃO E FLUXO DE AUTENTICAÇÃO ---
+            
+            if (IS_MOCK_MODE) {
+                console.warn("Modo MOCK detectado. O aplicativo funcionará localmente, mas os dados não serão salvos na nuvem e o login será simulado.");
+                // No modo mock, pulamos a inicialização do Firebase para evitar erros de rede
+                hideAppContent();
+                openModal('auth');
+                return;
+            }
+
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        // Usuário logado: Carrega o aplicativo
+                        userId = user.uid;
+                        showAppContent();
+                        closeModal(); 
+                    } else {
+                        // Usuário deslogado: Mostra a tela de login/cadastro
+                        userId = null;
+                        hideAppContent();
+                        openModal('auth'); 
+                    }
+                });
+
+            } catch (error) {
+                console.error("Erro durante a inicialização do Firebase (verifique sua USER_FIREBASE_CONFIG):", error);
+                document.getElementById('loader').classList.add('hidden');
+                document.getElementById('view-content').innerHTML = `
+                    <div class="p-8 text-red-400">
+                        <h2 class="text-2xl font-bold">Erro de Configuração do Firebase</h2>
+                        <p>Por favor, verifique se você substituiu a 'USER_FIREBASE_CONFIG' no código. Detalhes no console.</p>
+                    </div>`;
+            }
+        };
+
+        // --- Configuração de Eventos Globais ---
+        
+        const modalOverlay = document.getElementById('modal-overlay');
+        modalOverlay.addEventListener('click', (e) => {
+            // Só fecha se clicar no overlay, não no modal em si, a menos que seja a tela de AUTH.
+            if (e.target.id === 'modal-overlay' && !document.getElementById('auth-form')) {
+                closeModal();
+            }
+        });
+
+        document.getElementById('fab-button').addEventListener('click', () => {
+            if (userId) {
+                openModal('transaction');
+            } else {
+                openModal('auth'); // Redireciona para o login se deslogado
+            }
+        });
+
+        // Disponibiliza funções globais necessárias para eventos no HTML inline
+        window.setView = setView;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.handleAddAccount = handleAddAccount;
+        window.handleAddTransaction = handleAddTransaction;
+        window.renderAuthModal = renderAuthModal;
+
+        initApp();
+    </script>
+</body>
+</html>
