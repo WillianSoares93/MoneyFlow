@@ -122,6 +122,10 @@
         let accounts = [];
         let transactions = [];
         let currentView = 'dashboard'; // 'dashboard', 'accounts', 'transactions', 'reports'
+
+        // --- Element References ---
+        const navbarContainer = document.getElementById('navbar-container');
+        const viewContent = document.getElementById('view-content');
         
         // --- Funções de Persistência Local (Modo Mock Apenas) ---
         
