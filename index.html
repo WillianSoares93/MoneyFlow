@@ -86,17 +86,15 @@
         import { getFirestore, collection, query, onSnapshot, doc, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- 1. BLOCO DE CONFIGURAÇÃO PARA DEPLOY NO VERCEL/GITHUB ---
-        // Se você estiver hospedando este arquivo diretamente (ex: Vercel/GitHub), 
-        // SUBSTITUA ESTE OBJETO PELA SUA CONFIGURAÇÃO REAL DO PROJETO FIREBASE.
-        // Se você não substituir, o aplicativo continuará no MODO MOCK.
-
+        // As credenciais do seu projeto Firebase foram inseridas aqui.
+        
         const USER_FIREBASE_CONFIG = {
-            apiKey: "SEU_API_KEY_AQUI", // <-- SUBSTITUA ISSO
-            authDomain: "SEU_PROJETO_AQUI.firebaseapp.com", // <-- SUBSTITUA ISSO
-            projectId: "seu-project-id", // <-- SUBSTITUA ISSO
-            storageBucket: "seu-project-id.appspot.com",
-            messagingSenderId: "SEU_SENDER_ID",
-            appId: "SEU_APP_ID"
+            apiKey: "AIzaSyDFX1WcbLR5ldjyfDDViM_bexmrTsHtXuQ",
+            authDomain: "bd-moneyflow.firebaseapp.com",
+            projectId: "bd-moneyflow",
+            storageBucket: "bd-moneyflow.firebasestorage.app",
+            messagingSenderId: "546675742623",
+            appId: "1:546675742623:web:683a5807bf3dd3e999cfaa"
         };
         
         // --- Variáveis Globais de Configuração e Estado ---
