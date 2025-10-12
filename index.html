@@ -58,7 +58,9 @@
             <main id="main-content" class="flex-1 pb-16 sm:pb-0 overflow-auto">
                 <!-- Header Mobile -->
                 <header class="bg-gray-800 p-4 sm:p-6 shadow-xl sticky top-0 z-10 sm:hidden">
-                    <h1 id="mobile-header-title" class="text-2xl font-bold text-white">Finanças Pessoais</h1>
+                    <div id="mobile-header-content">
+                        <h1 id="mobile-header-title" class="text-2xl font-bold text-white">Finanças Pessoais</h1>
+                    </div>
                 </header>
                 
                 <!-- Conteúdo da Visão (Dashboard/Contas/etc) -->
@@ -83,11 +85,9 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, query, onSnapshot, doc, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, query, onSnapshot, doc, addDoc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- 1. BLOCO DE CONFIGURAÇÃO PARA DEPLOY NO VERCEL/GITHUB ---
-        // As credenciais do seu projeto Firebase foram inseridas aqui.
-        
         const USER_FIREBASE_CONFIG = {
             apiKey: "AIzaSyDFX1WcbLR5ldjyfDDViM_bexmrTsHtXuQ",
             authDomain: "bd-moneyflow.firebaseapp.com",
@@ -98,100 +98,27 @@
         };
         
         // --- Variáveis Globais de Configuração e Estado ---
-        // A lógica abaixo determina se estamos no ambiente Canvas/Vercel ou em um arquivo local/mock.
         const IS_RUNNING_IN_CANVAS = typeof __firebase_config !== 'undefined';
-        
-        // Determina a configuração a ser usada
-        let firebaseConfig;
-        if (IS_RUNNING_IN_CANVAS) {
-            // Se estiver no ambiente Canvas, usa a configuração injetada
-            firebaseConfig = JSON.parse(__firebase_config);
-        } else if (USER_FIREBASE_CONFIG.apiKey === "SEU_API_KEY_AQUI") {
-            // Se estiver fora do Canvas E o usuário não substituiu a chave, usa o MOCK
-            firebaseConfig = { apiKey: "dummy", authDomain: "dummy.firebaseapp.com", projectId: "dummy-project" };
-        } else {
-            // Se o usuário inseriu sua própria chave, usa a do usuário
-            firebaseConfig = USER_FIREBASE_CONFIG;
-        }
-
-        const IS_MOCK_MODE = firebaseConfig.apiKey === "dummy"; // Flag para o modo local
-        const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId; // Usa o Project ID como fallback para o App ID
+        let firebaseConfig = IS_RUNNING_IN_CANVAS ? JSON.parse(__firebase_config) : USER_FIREBASE_CONFIG;
+        const IS_MOCK_MODE = firebaseConfig.apiKey === "SEU_API_KEY_AQUI";
         
         let db, auth;
         let userId = null;
         let accounts = [];
         let transactions = [];
-        let currentView = 'dashboard'; // 'dashboard', 'accounts', 'transactions', 'reports'
-        
-        // --- Funções de Persistência Local (Modo Mock Apenas) ---
-        
-        const LOCAL_STORAGE_KEY_ACCOUNTS = 'finance_mock_accounts';
-        const LOCAL_STORAGE_KEY_TRANSACTIONS = 'finance_mock_transactions';
-
-        const saveLocalData = () => {
-            if (!IS_MOCK_MODE) return;
-            try {
-                localStorage.setItem(LOCAL_STORAGE_KEY_ACCOUNTS, JSON.stringify(accounts));
-                localStorage.setItem(LOCAL_STORAGE_KEY_TRANSACTIONS, JSON.stringify(transactions));
-            } catch (e) {
-                console.error('Erro ao salvar no localStorage:', e);
-            }
-        };
-
-        const loadLocalData = () => {
-            if (!IS_MOCK_MODE) return;
-            try {
-                const storedAccounts = localStorage.getItem(LOCAL_STORAGE_KEY_ACCOUNTS);
-                const storedTransactions = localStorage.getItem(LOCAL_STORAGE_KEY_TRANSACTIONS);
-
-                if (storedAccounts) {
-                    accounts = JSON.parse(storedAccounts);
-                }
-                if (storedTransactions) {
-                    transactions = JSON.parse(storedTransactions);
-                    transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-                }
-            } catch (e) {
-                console.error('Erro ao carregar do localStorage:', e);
-            }
-        };
+        let revenueCategories = [];
+        let expenseCategories = [];
+        let currentView = 'dashboard';
         
         // --- Funções Auxiliares (DOM e UI) ---
-
-        const formatCurrency = (value) => {
-            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-        };
-
-        const getCategoryColor = (category) => {
-            switch (category) {
-                case 'Alimentação': return 'bg-yellow-600/20 text-yellow-300';
-                case 'Transporte': return 'bg-blue-600/20 text-blue-300';
-                case 'Moradia': return 'bg-red-600/20 text-red-300';
-                case 'Salário': return 'bg-green-600/20 text-green-300';
-                case 'Investimento': return 'bg-indigo-600/20 text-indigo-300';
-                case 'Lazer': return 'bg-pink-600/20 text-pink-300';
-                case 'Saúde': return 'bg-teal-600/20 text-teal-300';
-                default: return 'bg-gray-600/20 text-gray-400';
-            }
-        };
+        const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
         const calculateBalances = () => {
-            if (!accounts.length) return [];
-            
             return accounts.map(account => {
                 const balanceChange = transactions
                     .filter(t => t.accountId === account.id)
-                    .reduce((sum, t) => {
-                        const amount = parseFloat(t.amount);
-                        return t.type === 'Receita' ? sum + amount : sum - amount;
-                    }, 0);
-
-                const initialBalance = parseFloat(account.initialBalance || 0);
-                const currentBalance = initialBalance + balanceChange;
-                return {
-                    ...account,
-                    currentBalance: currentBalance,
-                };
+                    .reduce((sum, t) => sum + (t.type === 'Receita' ? 1 : -1) * parseFloat(t.amount), 0);
+                return { ...account, currentBalance: parseFloat(account.initialBalance || 0) + balanceChange };
             });
         };
 
@@ -200,14 +127,10 @@
             updateUI();
         };
 
-        const openModal = (type) => {
-            if (type === 'auth') {
-                renderAuthModal('login');
-            } else {
-                renderModalContent(type);
-            }
+        const openModal = (content) => {
             document.getElementById('modal-overlay').classList.remove('hidden');
             document.getElementById('modal-overlay').classList.add('flex');
+            document.getElementById('modal-content-wrapper').innerHTML = content;
         };
 
         const closeModal = () => {
@@ -221,763 +144,478 @@
         const renderNavbar = () => {
             const navbarContainer = document.getElementById('navbar-container');
             const navItems = [
-                { name: 'Visão Geral', view: 'dashboard', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>' },
-                { name: 'Contas', view: 'accounts', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>' },
-                { name: 'Transações', view: 'transactions', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-10 0h20a2 2 0 002-2V8a2 2 0 00-2-2H3a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>' },
-                { name: 'Relatórios', view: 'reports', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>' },
+                { name: 'Visão Geral', view: 'dashboard', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>' },
+                { name: 'Contas', view: 'accounts', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>' },
+                { name: 'Transações', view: 'transactions', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-10 0h20a2 2 0 002-2V8a2 2 0 00-2-2H3a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>' },
+                { name: 'Categorias', view: 'categories', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h2zM7 13h.01M7 17h5a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2h2z"></path></svg>'},
+                { name: 'Relatórios', view: 'reports', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>' },
             ];
-
-            let navHTML = `<div class="flex justify-around sm:flex-col sm:space-y-2 sm:p-4 sm:min-h-screen sm:w-60">`;
+            const navHTML = navItems.map(item => `
+                <button data-view="${item.view}" class="nav-button flex flex-col sm:flex-row items-center sm:items-start sm:justify-start space-y-1 sm:space-y-0 sm:space-x-3 p-3 sm:p-4 rounded-xl transition duration-200 w-full ${item.view === currentView ? 'bg-purple-600 text-white shadow-xl' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}">
+                    ${item.icon}
+                    <span class="text-xs sm:text-sm font-medium">${item.name}</span>
+                </button>`).join('');
             
-            navItems.forEach(item => {
-                const isActive = item.view === currentView;
-                navHTML += `
-                    <button data-view="${item.view}" 
-                        class="nav-button flex flex-col sm:flex-row items-center sm:items-start sm:justify-start space-y-1 sm:space-y-0 sm:space-x-3 p-3 sm:p-4 rounded-xl transition duration-200 w-full 
-                        ${isActive ? 'bg-purple-600 text-white shadow-xl' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}">
-                        ${item.icon}
-                        <span class="text-xs sm:text-sm font-medium">${item.name}</span>
-                    </button>`;
-            });
-
-            // Botão de Logout/Status
-            navHTML += `
+            const userSection = `
                 <div class="mt-auto pt-6 border-t border-gray-700/50">
-                    <button onclick="handleSignOut()"
-                        class="flex flex-col sm:flex-row items-center sm:items-start sm:justify-start space-y-1 sm:space-y-0 sm:space-x-3 p-3 sm:p-4 rounded-xl transition duration-200 w-full text-red-400 hover:bg-red-800/20 hover:text-red-300">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                    <button onclick="handleSignOut()" class="flex flex-col sm:flex-row items-center sm:items-start sm:justify-start space-y-1 sm:space-y-0 sm:space-x-3 p-3 sm:p-4 rounded-xl transition duration-200 w-full text-red-400 hover:bg-red-800/20 hover:text-red-300">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                         <span class="text-xs sm:text-sm font-medium">Sair</span>
                     </button>
-                    <div class="hidden sm:block mt-2 text-xs text-gray-500">
-                        ID: <span class="truncate block max-w-full text-gray-600">${userId || 'Desconectado'}</span>
-                    </div>
-                </div>
-            </div>`;
-            
-            if (navbarContainer) {
-                navbarContainer.innerHTML = navHTML;
-                navbarContainer.querySelectorAll('.nav-button').forEach(button => {
-                    button.addEventListener('click', () => setView(button.getAttribute('data-view')));
-                });
-            }
+                    <div class="hidden sm:block mt-2 text-xs text-gray-500">ID: <span class="truncate block max-w-full text-gray-600">${userId || 'Desconectado'}</span></div>
+                </div>`;
+
+            navbarContainer.innerHTML = `<div class="flex justify-around sm:flex-col sm:space-y-2 sm:p-4 sm:min-h-screen sm:w-60">${navHTML}${userSection}</div>`;
+            navbarContainer.querySelectorAll('.nav-button').forEach(btn => btn.addEventListener('click', () => setView(btn.dataset.view)));
         };
 
         const renderTransactionItem = (t, calculatedAccounts) => {
             const isExpense = t.type === 'Despesa';
-            const accountName = calculatedAccounts.find(a => a.id === t.accountId)?.name || 'Conta Desconhecida';
-            const dateFormatted = new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR');
-
-            const iconSvg = isExpense 
-                ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>'
-                : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>';
+            const account = calculatedAccounts.find(a => a.id === t.accountId);
+            const categoryText = t.subcategory ? `${t.category} / ${t.subcategory}` : t.category;
 
             return `
-                <div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition duration-150">
-                    <div class="flex items-center space-x-3">
+                <div class="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
+                    <div class="flex items-center space-x-3 flex-1 min-w-0">
                         <div class="p-2 rounded-full ${isExpense ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}">
-                            ${iconSvg}
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">${isExpense ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path>' : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>'}</svg>
                         </div>
                         <div class="flex-1 min-w-0">
-                            <p class="font-semibold text-white truncate max-w-[200px] sm:max-w-xs">${t.description}</p>
+                            <p class="font-semibold text-white truncate">${t.description}</p>
                             <div class="text-xs text-gray-400 flex flex-wrap gap-x-2">
-                                <span class="${getCategoryColor(t.category) + " px-2 py-0.5 rounded-full"}">${t.category}</span>
-                                <span>${accountName}</span>
-                                <span>${dateFormatted}</span>
+                                <span>${categoryText}</span>
+                                <span>${account?.name || '...'}</span>
+                                <span>${new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
                             </div>
                         </div>
                     </div>
                     <div class="flex items-center space-x-3 ml-2">
-                        <p class="font-bold whitespace-nowrap ${isExpense ? 'text-red-400' : 'text-green-400'}">
-                            ${isExpense ? '-' : '+'} ${formatCurrency(t.amount)}
-                        </p>
-                        <button onclick="handleDeleteTransaction('${t.id}')" class="text-gray-500 hover:text-red-500 p-1 rounded-full transition">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
+                        <p class="font-bold whitespace-nowrap ${isExpense ? 'text-red-400' : 'text-green-400'}">${isExpense ? '-' : '+'} ${formatCurrency(t.amount)}</p>
+                        <button onclick="handleDeleteTransaction('${t.id}')" class="text-gray-500 hover:text-red-500 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
                     </div>
-                </div>
-            `;
+                </div>`;
+        };
+        
+        const renderMobileHeader = (title, actions = '') => {
+            document.getElementById('mobile-header-content').innerHTML = `
+                <div class="flex justify-between items-center">
+                    <h1 class="text-2xl font-bold text-white">${title}</h1>
+                    <div>${actions}</div>
+                </div>`;
         };
 
         const renderDashboard = (calculatedAccounts) => {
-            const totalBalance = calculatedAccounts.reduce((sum, account) => sum + account.currentBalance, 0);
-            const recentTransactions = transactions.slice(0, 5);
-
-            let accountsList = calculatedAccounts.slice(0, 5).map(account => `
+            renderMobileHeader('Finanças Pessoais');
+            const totalBalance = calculatedAccounts.reduce((sum, acc) => sum + acc.currentBalance, 0);
+            const accountsList = calculatedAccounts.slice(0, 5).map(acc => `
                 <div class="flex justify-between items-center p-3 bg-gray-700 rounded-lg">
-                    <div>
-                        <p class="font-semibold text-white">${account.name}</p>
-                        <p class="text-xs text-gray-400">${account.type}</p>
-                    </div>
-                    <p class="font-bold ${account.currentBalance >= 0 ? 'text-green-400' : 'text-red-400'}">
-                        ${formatCurrency(account.currentBalance)}
-                    </p>
-                </div>
-            `).join('');
+                    <div><p class="font-semibold text-white">${acc.name}</p><p class="text-xs text-gray-400">${acc.type}</p></div>
+                    <p class="font-bold ${acc.currentBalance >= 0 ? 'text-green-400' : 'text-red-400'}">${formatCurrency(acc.currentBalance)}</p>
+                </div>`).join('') || '<p class="text-gray-500 text-center py-4">Adicione sua primeira conta!</p>';
 
-            if (!accounts.length) {
-                accountsList = '<p class="text-gray-500 text-center py-4">Adicione sua primeira conta!</p>';
-            }
-
-            let transactionsList = recentTransactions.map(t => renderTransactionItem(t, calculatedAccounts)).join('');
-            if (!transactions.length) {
-                transactionsList = '<p class="text-gray-500 text-center py-4">Nenhuma transação registrada ainda.</p>';
-            }
+            const transactionsList = transactions.slice(0, 5).map(t => renderTransactionItem(t, calculatedAccounts)).join('') || '<p class="text-gray-500 text-center py-4">Nenhuma transação registrada.</p>';
             
-            document.getElementById('mobile-header-title').innerHTML = `<h1>Finanças Pessoais</h1>`;
-
             return `
                 <div class="p-4 sm:p-6 lg:p-8">
-                    <!-- Card de Saldo Total -->
                     <div class="bg-gray-800 p-6 rounded-2xl shadow-xl mb-8 border border-purple-600/50">
                         <p class="text-gray-400 text-sm uppercase tracking-wider mb-2">Saldo Total Consolidado</p>
-                        <h1 class="text-4xl sm:text-5xl font-extrabold text-white">
-                            ${formatCurrency(totalBalance)}
-                        </h1>
-                        <!-- Botão Desktop -->
+                        <h1 class="text-4xl sm:text-5xl font-extrabold text-white">${formatCurrency(totalBalance)}</h1>
                         <div class="hidden sm:flex justify-end mt-4">
-                            <button onclick="openModal('transaction')"
-                                class="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <button onclick="openTransactionModal()" class="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                 <span>Nova Transação</span>
                             </button>
                         </div>
                     </div>
-
                     <div class="grid lg:grid-cols-2 gap-8">
-                        <!-- Lista de Contas -->
                         <div class="bg-gray-800 p-6 rounded-2xl shadow-xl">
-                            <h2 class="text-xl font-bold text-white mb-4 flex justify-between items-center">
-                                Minhas Contas
-                                <button onclick="setView('accounts')" class="text-purple-400 hover:text-purple-300 text-sm">Ver Todas</button>
-                            </h2>
+                            <h2 class="text-xl font-bold text-white mb-4 flex justify-between items-center">Minhas Contas <button onclick="setView('accounts')" class="text-purple-400 hover:text-purple-300 text-sm">Ver Todas</button></h2>
                             <div class="space-y-3">${accountsList}</div>
                         </div>
-
-                        <!-- Transações Recentes -->
                         <div class="bg-gray-800 p-6 rounded-2xl shadow-xl">
-                            <h2 class="text-xl font-bold text-white mb-4 flex justify-between items-center">
-                                Transações Recentes
-                                <button onclick="setView('transactions')" class="text-purple-400 hover:text-purple-300 text-sm">Ver Todas</button>
-                            </h2>
+                            <h2 class="text-xl font-bold text-white mb-4 flex justify-between items-center">Transações Recentes <button onclick="setView('transactions')" class="text-purple-400 hover:text-purple-300 text-sm">Ver Todas</button></h2>
                             <div class="space-y-3">${transactionsList}</div>
                         </div>
                     </div>
-                </div>
-            `;
+                </div>`;
         };
 
         const renderAccounts = (calculatedAccounts) => {
-            const totalBalance = calculatedAccounts.reduce((sum, account) => sum + account.currentBalance, 0);
-
-            let accountsGrid = calculatedAccounts.map(account => `
+            const mobileActions = `<button onclick="openAccountModal()" class="p-2 rounded-full bg-purple-600 text-white"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button>`;
+            renderMobileHeader('Contas', mobileActions);
+            
+            const totalBalance = calculatedAccounts.reduce((sum, acc) => sum + acc.currentBalance, 0);
+            const accountsGrid = calculatedAccounts.map(acc => `
                 <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
-                    <h3 class="text-xl font-bold text-white mb-1">${account.name}</h3>
-                    <p class="text-sm text-purple-400 mb-4">${account.type}</p>
+                    <h3 class="text-xl font-bold text-white mb-1">${acc.name}</h3>
+                    <p class="text-sm text-purple-400 mb-4">${acc.type}</p>
                     <div class="border-t border-gray-700 pt-4">
                         <p class="text-sm text-gray-400">Saldo Atual</p>
-                        <p class="text-2xl font-extrabold ${account.currentBalance >= 0 ? 'text-green-400' : 'text-red-400'}">
-                            ${formatCurrency(account.currentBalance)}
-                        </p>
+                        <p class="text-2xl font-extrabold ${acc.currentBalance >= 0 ? 'text-green-400' : 'text-red-400'}">${formatCurrency(acc.currentBalance)}</p>
                     </div>
-                </div>
-            `).join('');
-
-            if (!calculatedAccounts.length) {
-                accountsGrid = '<p class="text-gray-500 col-span-full text-center py-10">Nenhuma conta cadastrada.</p>';
-            }
-
-            document.getElementById('mobile-header-title').innerHTML = `
-                <div class="flex justify-between items-center">
-                    <h1 class="text-2xl font-bold text-white">Contas</h1>
-                    <button onclick="openModal('account')" class="p-2 rounded-full bg-purple-600 text-white">
-                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                    </button>
-                </div>
-            `;
-
+                </div>`).join('') || '<p class="text-gray-500 col-span-full text-center py-10">Nenhuma conta cadastrada.</p>';
+            
             return `
                 <div class="p-4 sm:p-6 lg:p-8">
                     <h1 class="text-3xl font-bold text-white mb-6 hidden sm:block">Contas e Cartões</h1>
                     <div class="mb-6 flex justify-between items-center">
                         <p class="text-lg text-gray-300">Total em Contas: <span class="font-bold ${totalBalance >= 0 ? 'text-green-400' : 'text-red-400'}">${formatCurrency(totalBalance)}</span></p>
-                        <button onclick="openModal('account')"
-                            class="hidden sm:flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <button onclick="openAccountModal()" class="hidden sm:flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             <span>Nova Conta</span>
                         </button>
                     </div>
-
-                    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        ${accountsGrid}
-                    </div>
-                </div>
-            `;
+                    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">${accountsGrid}</div>
+                </div>`;
         };
 
         const renderTransactions = (calculatedAccounts) => {
-            let transactionsList = transactions.map(t => renderTransactionItem(t, calculatedAccounts)).join('');
-            
-            if (!transactions.length) {
-                transactionsList = '<p class="text-gray-500 text-center py-10">Nenhuma transação registrada.</p>';
-            }
-
-            document.getElementById('mobile-header-title').innerHTML = `<h1>Transações</h1>`;
-
+            renderMobileHeader('Transações');
+            const transactionsList = transactions.map(t => renderTransactionItem(t, calculatedAccounts)).join('') || '<p class="text-gray-500 text-center py-10">Nenhuma transação registrada.</p>';
             return `
                 <div class="p-4 sm:p-6 lg:p-8">
                     <h1 class="text-3xl font-bold text-white mb-6 hidden sm:block">Todas as Transações</h1>
                     <div class="mb-6 flex justify-end">
-                        <button onclick="openModal('transaction')"
-                            class="hidden sm:flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <button onclick="openTransactionModal()" class="hidden sm:flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             <span>Nova Transação</span>
                         </button>
                     </div>
-                    <div class="bg-gray-800 rounded-xl p-4 shadow-xl">
-                        <div class="space-y-3">
-                            ${transactionsList}
+                    <div class="bg-gray-800 rounded-xl p-4 shadow-xl space-y-3">${transactionsList}</div>
+                </div>`;
+        };
+        
+        const renderCategories = () => {
+            renderMobileHeader('Categorias');
+            const renderCategorySection = (title, categories, type) => {
+                const categoryList = categories.map(cat => `
+                    <div class="p-3 bg-gray-700 rounded-lg">
+                        <div class="flex justify-between items-center">
+                            <span class="font-semibold text-white">${cat.name}</span>
+                            <div>
+                                <button onclick="openSubcategoryModal('${type}', '${cat.id}', '${cat.name}')" class="text-xs text-purple-400 hover:text-purple-300 mr-2">add sub</button>
+                                <button onclick="handleDeleteCategory('${type}', '${cat.id}')" class="text-gray-500 hover:text-red-500 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                            </div>
+                        </div>
+                        <div class="mt-2 pl-4 space-y-1">
+                            ${(cat.subcategories || []).map(sub => `
+                                <div class="flex justify-between items-center text-sm text-gray-300">
+                                    <span>- ${sub}</span>
+                                    <button onclick="handleDeleteSubcategory('${type}', '${cat.id}', '${sub}')" class="text-gray-500 hover:text-red-500 p-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
-                </div>
-            `;
-        };
+                `).join('') || '<p class="text-gray-500 text-center py-4">Nenhuma categoria cadastrada.</p>';
 
-        const renderReports = () => {
-            const expenseTransactions = transactions.filter(t => t.type === 'Despesa');
-            const spendingByCategory = expenseTransactions
-                .reduce((acc, t) => {
-                    const cat = t.category || 'Outros';
-                    acc[cat] = (acc[cat] || 0) + parseFloat(t.amount);
-                    return acc;
-                }, {});
-
-            const totalExpense = Object.values(spendingByCategory).reduce((sum, amount) => sum + amount, 0);
-
-            const reportData = Object.entries(spendingByCategory)
-                .map(([category, amount]) => ({
-                    category,
-                    amount,
-                    percentage: totalExpense > 0 ? (amount / totalExpense) * 100 : 0,
-                }))
-                .sort((a, b) => b.amount - a.amount);
-            
-            let reportList = '';
-
-            if (totalExpense === 0) {
-                reportList = '<p class="text-gray-500 text-center py-10">Não há despesas para gerar o relatório.</p>';
-            } else {
-                reportData.forEach(item => {
-                    reportList += `
-                        <div class="space-y-1">
-                            <div class="flex justify-between text-white text-sm">
-                                <span class="font-semibold">${item.category}</span>
-                                <span class="font-bold">${formatCurrency(item.amount)} (${item.percentage.toFixed(1)}%)</span>
-                            </div>
-                            <div class="h-2 bg-gray-700 rounded-full overflow-hidden">
-                                <div
-                                    class="${getCategoryColor(item.category).replace(/bg-.*\/20/, 'bg-purple-500').replace(/text-.*$/, '')} h-full transition-all duration-500"
-                                    style="width: ${item.percentage}%"
-                                ></div>
-                            </div>
-                        </div>
-                    `;
-                });
-            }
-
-            document.getElementById('mobile-header-title').innerHTML = `<h1>Relatórios</h1>`;
+                return `
+                    <div class="bg-gray-800 p-6 rounded-2xl shadow-xl">
+                        <h2 class="text-xl font-bold text-white mb-4">${title}</h2>
+                        <div class="space-y-3">${categoryList}</div>
+                        <button onclick="openCategoryModal('${type}')" class="w-full mt-4 py-2 text-purple-400 border-2 border-dashed border-gray-600 rounded-lg hover:bg-gray-700 hover:border-purple-500 transition">Adicionar Categoria</button>
+                    </div>`;
+            };
 
             return `
                 <div class="p-4 sm:p-6 lg:p-8">
-                    <h1 class="text-3xl font-bold text-white mb-6 hidden sm:block">Relatórios Avançados (Gastos por Categoria)</h1>
-                    <div class="bg-gray-800 p-6 rounded-2xl shadow-xl border border-gray-700">
-                        <h2 class="text-xl font-bold text-white mb-4">Análise de Despesas</h2>
-                        <p class="text-gray-400 mb-6">Total de Despesas Registradas: <span class="font-bold text-red-400">${formatCurrency(totalExpense)}</span></p>
-                        <div class="space-y-4">
-                            ${reportList}
-                        </div>
+                    <h1 class="text-3xl font-bold text-white mb-6">Gerenciar Categorias</h1>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        ${renderCategorySection('Categorias de Receita', revenueCategories, 'revenue')}
+                        ${renderCategorySection('Categorias de Despesa', expenseCategories, 'expense')}
                     </div>
-                </div>
-            `;
+                </div>`;
+        };
+
+        const renderReports = () => {
+            renderMobileHeader('Relatórios');
+            const expenseByCat = transactions.filter(t => t.type === 'Despesa').reduce((acc, t) => {
+                acc[t.category] = (acc[t.category] || 0) + parseFloat(t.amount);
+                return acc;
+            }, {});
+            const totalExpense = Object.values(expenseByCat).reduce((sum, amount) => sum + amount, 0);
+            const reportList = Object.entries(expenseByCat).sort((a, b) => b[1] - a[1]).map(([cat, amount]) => {
+                const percentage = totalExpense > 0 ? (amount / totalExpense) * 100 : 0;
+                return `
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-white text-sm">
+                            <span class="font-semibold">${cat}</span>
+                            <span class="font-bold">${formatCurrency(amount)} (${percentage.toFixed(1)}%)</span>
+                        </div>
+                        <div class="h-2 bg-gray-700 rounded-full"><div class="bg-purple-500 h-full rounded-full" style="width: ${percentage}%"></div></div>
+                    </div>`;
+            }).join('') || '<p class="text-gray-500 text-center py-10">Não há despesas para gerar o relatório.</p>';
+            
+            return `
+                <div class="p-4 sm:p-6 lg:p-8">
+                    <h1 class="text-3xl font-bold text-white mb-6 hidden sm:block">Relatórios de Gastos</h1>
+                    <div class="bg-gray-800 p-6 rounded-2xl shadow-xl border border-gray-700">
+                        <h2 class="text-xl font-bold text-white mb-4">Análise de Despesas por Categoria</h2>
+                        <p class="text-gray-400 mb-6">Total de Despesas: <span class="font-bold text-red-400">${formatCurrency(totalExpense)}</span></p>
+                        <div class="space-y-4">${reportList}</div>
+                    </div>
+                </div>`;
         };
         
         const renderView = (calculatedAccounts) => {
             const viewContent = document.getElementById('view-content');
-            switch (currentView) {
-                case 'dashboard':
-                    viewContent.innerHTML = renderDashboard(calculatedAccounts);
-                    break;
-                case 'accounts':
-                    viewContent.innerHTML = renderAccounts(calculatedAccounts);
-                    break;
-                case 'transactions':
-                    viewContent.innerHTML = renderTransactions(calculatedAccounts);
-                    break;
-                case 'reports':
-                    viewContent.innerHTML = renderReports();
-                    break;
-                default:
-                    viewContent.innerHTML = renderDashboard(calculatedAccounts);
-            }
+            const views = {
+                'dashboard': () => renderDashboard(calculatedAccounts),
+                'accounts': () => renderAccounts(calculatedAccounts),
+                'transactions': () => renderTransactions(calculatedAccounts),
+                'categories': () => renderCategories(),
+                'reports': () => renderReports(),
+            };
+            viewContent.innerHTML = (views[currentView] || views['dashboard'])();
         };
 
         const updateUI = () => {
+            if (!userId) return;
             const calculatedAccounts = calculateBalances();
             renderNavbar();
             renderView(calculatedAccounts);
         };
-
-        // --- Funções de Login e Cadastro ---
-
-        const handleGoogleSignIn = async () => {
-            const errorMessageElement = document.getElementById('auth-error-message');
-            errorMessageElement.textContent = ''; // Limpa erros anteriores
-
-            if (IS_MOCK_MODE) {
-                errorMessageElement.textContent = 'Login com Google não disponível em Modo MOCK.';
-                return;
-            }
-
-            const provider = new GoogleAuthProvider();
-            try {
-                await signInWithPopup(auth, provider);
-                // onAuthStateChanged irá cuidar do resto
-            } catch (error) {
-                console.error("Erro no login com Google:", error);
-                let friendlyMessage = 'Não foi possível fazer login com o Google. Tente novamente.';
-                if (error.code === 'auth/popup-closed-by-user') {
-                    friendlyMessage = 'A janela de login foi fechada. Tente novamente.';
-                } else if (error.code === 'auth/popup-blocked') {
-                    friendlyMessage = 'O pop-up de login foi bloqueado pelo seu navegador. Por favor, habilite os pop-ups para este site.';
-                }
-                errorMessageElement.textContent = friendlyMessage;
-            }
-        };
+        
+        // --- MODAL CONTENT FUNCTIONS ---
+        window.openAuthModal = () => openModal(renderAuthModal('login'));
+        window.openAccountModal = () => openModal(renderAccountForm());
+        window.openTransactionModal = () => openModal(renderTransactionForm());
+        window.openCategoryModal = (type) => openModal(renderCategoryForm(type));
+        window.openSubcategoryModal = (type, catId, catName) => openModal(renderSubcategoryForm(type, catId, catName));
 
         const renderAuthModal = (mode) => {
             const isLogin = mode === 'login';
-            const title = isLogin ? 'Fazer Login' : 'Criar Conta';
-            const buttonText = isLogin ? 'Entrar' : 'Cadastrar';
-            const switchText = isLogin ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Faça Login';
-
-            document.getElementById('modal-content-wrapper').innerHTML = `
+            return `
                 <div class="p-6">
-                    <h3 class="text-2xl font-bold mb-6 text-white text-center">${title}</h3>
-                    <form id="auth-form">
+                    <h3 class="text-2xl font-bold mb-6 text-white text-center">${isLogin ? 'Fazer Login' : 'Criar Conta'}</h3>
+                    <form id="auth-form" onsubmit="handleAuthSubmit(event, ${isLogin})">
                         <div class="space-y-4">
-                            <input type="email" name="email" placeholder="E-mail" 
-                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
-                            <input type="password" name="password" placeholder="Senha" 
-                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
+                            <input type="email" name="email" placeholder="E-mail" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
+                            <input type="password" name="password" placeholder="Senha" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
                             <p id="auth-error-message" class="text-sm text-red-400"></p>
                         </div>
-                        <button type="submit" class="w-full mt-6 px-4 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-lg hover:bg-purple-700 transition duration-200">
-                            ${buttonText}
-                        </button>
+                        <button type="submit" class="w-full mt-6 px-4 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-lg hover:bg-purple-700 transition">${isLogin ? 'Entrar' : 'Cadastrar'}</button>
                     </form>
-
-                    <div class="relative flex py-4 items-center">
-                        <div class="flex-grow border-t border-gray-600"></div>
-                        <span class="flex-shrink mx-4 text-gray-400 text-xs">OU</span>
-                        <div class="flex-grow border-t border-gray-600"></div>
-                    </div>
-
-                    <button type="button" id="google-signin-btn" class="w-full flex items-center justify-center px-4 py-3 bg-white text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-100 transition duration-200">
+                    <div class="relative flex py-4 items-center"><div class="flex-grow border-t border-gray-600"></div><span class="flex-shrink mx-4 text-gray-400 text-xs">OU</span><div class="flex-grow border-t border-gray-600"></div></div>
+                    <button type="button" onclick="handleGoogleSignIn()" class="w-full flex items-center justify-center px-4 py-3 bg-white text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-100 transition">
                         <svg class="w-5 h-5 mr-3" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.222,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l6.19,5.238C42.021,35.591,44,30.032,44,24C44,22.659,43.862,21.35,43.611,20.083z"></path></svg>
                         Entrar com Google
                     </button>
-
-                    <button onclick="renderAuthModal('${isLogin ? 'signup' : 'login'}')" class="w-full text-center mt-4 text-sm text-gray-400 hover:text-purple-400 transition duration-200">
-                        ${switchText}
-                    </button>
+                    <button onclick="openModal(renderAuthModal('${isLogin ? 'signup' : 'login'}'))" class="w-full text-center mt-4 text-sm text-gray-400 hover:text-purple-400 transition">${isLogin ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Faça Login'}</button>
+                </div>`;
+        };
+        
+        const renderAccountForm = () => `
+            <form onsubmit="handleAddAccount(event)" class="p-6">
+                <h3 class="text-xl font-bold mb-4 text-white">Nova Conta/Cartão</h3>
+                <div class="space-y-4">
+                    <input type="text" name="name" placeholder="Nome da Conta (ex: Nubank)" class="w-full p-3 rounded-lg bg-gray-700 text-white" required />
+                    <select name="type" class="w-full p-3 rounded-lg bg-gray-700 text-white">
+                        <option>Conta Corrente</option><option>Poupança</option><option>Cartão de Crédito</option><option>Carteira</option>
+                    </select>
+                    <input type="number" name="initialBalance" placeholder="Saldo Inicial (R$)" value="0" step="0.01" class="w-full p-3 rounded-lg bg-gray-700 text-white" required />
                 </div>
-            `;
-            const form = document.getElementById('auth-form');
-            form.addEventListener('submit', (e) => handleAuthSubmit(e, isLogin));
+                <div class="flex justify-end space-x-4 mt-6"><button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-600 text-white rounded-lg">Cancelar</button><button type="submit" class="px-4 py-2 bg-purple-600 text-white rounded-lg">Salvar</button></div>
+            </form>`;
 
-            const googleBtn = document.getElementById('google-signin-btn');
-            googleBtn.addEventListener('click', handleGoogleSignIn);
-            
-            document.getElementById('modal-overlay').classList.remove('hidden');
-            document.getElementById('modal-overlay').classList.add('flex');
+        const renderTransactionForm = () => {
+            const accountOptions = accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('') || `<option disabled>Crie uma conta primeiro</option>`;
+            const today = new Date().toISOString().substring(0, 10);
+            return `
+                <form onsubmit="handleAddTransaction(event)" class="p-6">
+                    <h3 class="text-xl font-bold mb-4 text-white">Nova Transação</h3>
+                    <div class="space-y-4">
+                        <div class="flex space-x-4">
+                            <button type="button" id="btn-receita" onclick="toggleTransactionType('Receita')" class="flex-1 py-2 rounded-lg font-semibold bg-gray-700 text-gray-300">Receita (+)</button>
+                            <button type="button" id="btn-despesa" onclick="toggleTransactionType('Despesa')" class="flex-1 py-2 rounded-lg font-semibold bg-red-600 text-white">Despesa (-)</button>
+                        </div>
+                        <input type="text" name="description" placeholder="Descrição" class="w-full p-3 rounded-lg bg-gray-700 text-white" required />
+                        <input type="number" name="amount" placeholder="Valor (R$)" min="0.01" step="0.01" class="w-full p-3 rounded-lg bg-gray-700 text-white" required />
+                        <select name="accountId" class="w-full p-3 rounded-lg bg-gray-700 text-white" required>${accountOptions}</select>
+                        <select name="category" id="transaction-category" onchange="updateSubcategoryOptions(this.value)" class="w-full p-3 rounded-lg bg-gray-700 text-white" required><option>Selecione a Categoria</option></select>
+                        <select name="subcategory" id="transaction-subcategory" class="w-full p-3 rounded-lg bg-gray-700 text-white" disabled><option>Selecione a Subcategoria</option></select>
+                        <input type="date" name="date" value="${today}" class="w-full p-3 rounded-lg bg-gray-700 text-white" required />
+                        <input type="hidden" name="type" id="transaction-type" value="Despesa" />
+                    </div>
+                    <div class="flex justify-end space-x-4 mt-6"><button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-600 rounded-lg">Cancelar</button><button type="submit" class="px-4 py-2 bg-purple-600 rounded-lg">Registrar</button></div>
+                </form>`;
         };
 
-        const handleAuthSubmit = async (event, isLogin) => {
-            event.preventDefault();
-            const form = event.target;
-            const email = form.email.value;
-            const password = form.password.value;
-            const errorMessageElement = document.getElementById('auth-error-message');
-            errorMessageElement.textContent = ''; 
+        const renderCategoryForm = (type) => `
+            <form onsubmit="handleAddCategory(event, '${type}')" class="p-6">
+                <h3 class="text-xl font-bold mb-4 text-white">Nova Categoria de ${type === 'revenue' ? 'Receita' : 'Despesa'}</h3>
+                <input type="text" name="name" placeholder="Nome da Categoria" class="w-full p-3 rounded-lg bg-gray-700 text-white" required />
+                <div class="flex justify-end space-x-4 mt-6"><button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-600 rounded-lg">Cancelar</button><button type="submit" class="px-4 py-2 bg-purple-600 rounded-lg">Salvar</button></div>
+            </form>`;
 
-            if (IS_MOCK_MODE) {
-                errorMessageElement.textContent = 'Modo MOCK: Login simulado com sucesso! Os dados não serão salvos na nuvem.';
-                userId = "MOCK-USER-1234";
-                setupListeners(); 
-                closeModal();
-                return;
+        const renderSubcategoryForm = (type, catId, catName) => `
+            <form onsubmit="handleAddSubcategory(event, '${type}', '${catId}')" class="p-6">
+                <h3 class="text-xl font-bold mb-4 text-white">Nova Subcategoria para "${catName}"</h3>
+                <input type="text" name="name" placeholder="Nome da Subcategoria" class="w-full p-3 rounded-lg bg-gray-700 text-white" required />
+                <div class="flex justify-end space-x-4 mt-6"><button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-600 rounded-lg">Cancelar</button><button type="submit" class="px-4 py-2 bg-purple-600 rounded-lg">Salvar</button></div>
+            </form>`;
+
+        window.toggleTransactionType = (type) => {
+            const isRevenue = type === 'Receita';
+            document.getElementById('transaction-type').value = type;
+            document.getElementById('btn-receita').className = `flex-1 py-2 rounded-lg font-semibold ${isRevenue ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300'}`;
+            document.getElementById('btn-despesa').className = `flex-1 py-2 rounded-lg font-semibold ${!isRevenue ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300'}`;
+            
+            const categories = isRevenue ? revenueCategories : expenseCategories;
+            const catSelect = document.getElementById('transaction-category');
+            catSelect.innerHTML = '<option value="">Selecione a Categoria</option>' + categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+            updateSubcategoryOptions('');
+        };
+
+        window.updateSubcategoryOptions = (categoryName) => {
+            const type = document.getElementById('transaction-type').value;
+            const categories = type === 'Receita' ? revenueCategories : expenseCategories;
+            const selectedCategory = categories.find(c => c.name === categoryName);
+            const subcatSelect = document.getElementById('transaction-subcategory');
+            
+            if (selectedCategory && selectedCategory.subcategories?.length > 0) {
+                subcatSelect.disabled = false;
+                subcatSelect.innerHTML = '<option value="">Selecione a Subcategoria</option>' + selectedCategory.subcategories.map(s => `<option value="${s}">${s}</option>`).join('');
+            } else {
+                subcatSelect.disabled = true;
+                subcatSelect.innerHTML = '<option value="">Nenhuma Subcategoria</option>';
             }
+        };
 
+        // --- CRUD FUNCTIONS ---
+        window.handleAuthSubmit = async (event, isLogin) => {
+            event.preventDefault();
+            const { email, password } = Object.fromEntries(new FormData(event.target));
+            const errorEl = document.getElementById('auth-error-message');
+            errorEl.textContent = '';
             try {
-                if (isLogin) {
-                    await signInWithEmailAndPassword(auth, email, password);
-                } else {
-                    await createUserWithEmailAndPassword(auth, email, password);
-                }
+                if (isLogin) await signInWithEmailAndPassword(auth, email, password);
+                else await createUserWithEmailAndPassword(auth, email, password);
             } catch (error) {
-                console.error("Erro de Autenticação:", error.code, error.message);
-                
-                let friendlyMessage = 'Erro de autenticação.';
-                switch(error.code) {
-                    case 'auth/user-not-found':
-                    case 'auth/wrong-password':
-                        friendlyMessage = 'E-mail ou senha inválidos.';
-                        break;
-                    case 'auth/email-already-in-use':
-                        friendlyMessage = 'Este e-mail já está em uso. Tente fazer login.';
-                        break;
-                    case 'auth/weak-password':
-                        friendlyMessage = 'A senha deve ter pelo menos 6 caracteres.';
-                        break;
-                    default:
-                        friendlyMessage = 'Ocorreu um erro. Verifique sua conexão e tente novamente.';
-                }
-                errorMessageElement.textContent = friendlyMessage;
+                errorEl.textContent = 'E-mail ou senha inválidos.';
+                console.error("Auth Error:", error);
             }
         };
 
-        window.handleSignOut = async () => {
-             if (IS_MOCK_MODE) {
-                userId = null;
-                accounts = [];
-                transactions = [];
-                currentView = 'dashboard';
-                openModal('auth');
-                console.warn("Sessão MOCK encerrada.");
-                return;
-            }
-
-            try {
-                await signOut(auth);
-            } catch (error) {
-                console.error("Erro ao sair:", error);
-            }
+        window.handleGoogleSignIn = async () => {
+            try { await signInWithPopup(auth, new GoogleAuthProvider()); } 
+            catch (error) { console.error("Google Sign-In Error:", error); }
         };
 
-        // --- Funções do Modal de Dados ---
-        
-        const getTransactionCategories = (type) => {
-            return type === 'Receita'
-                ? ['Salário', 'Investimento', 'Venda', 'Presente', 'Outros']
-                : ['Alimentação', 'Moradia', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Outros'];
-        };
+        window.handleSignOut = async () => { try { await signOut(auth); } catch (e) { console.error(e); } };
 
-        const renderModalContent = (type) => {
-            const modalContentWrapper = document.getElementById('modal-content-wrapper');
-            if (type === 'account') {
-                modalContentWrapper.innerHTML = `
-                    <form id="account-form" class="p-6">
-                        <h3 class="text-xl font-bold mb-4 text-white">Adicionar Nova Conta/Cartão</h3>
-                        <div class="space-y-4">
-                            <input type="text" name="name" placeholder="Nome da Conta (ex: Nubank, Visa Crédito)" 
-                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
-                            <select name="type" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500">
-                                <option value="Conta Corrente">Conta Corrente</option>
-                                <option value="Poupança">Poupança</option>
-                                <option value="Cartão de Crédito">Cartão de Crédito</option>
-                                <option value="Carteira">Carteira (Dinheiro Físico)</option>
-                            </select>
-                            <input type="number" name="initialBalance" placeholder="Saldo Inicial (R$)" value="0"
-                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" step="0.01" required />
-                        </div>
-                        <div class="flex justify-end space-x-4 mt-6">
-                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition duration-200">
-                                Cancelar
-                            </button>
-                            <button type="submit" class="px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-lg hover:bg-purple-700 transition duration-200">
-                                Salvar Conta
-                            </button>
-                        </div>
-                    </form>
-                `;
-                document.getElementById('account-form').addEventListener('submit', handleAddAccount);
-
-            } else if (type === 'transaction') {
-                const defaultType = 'Despesa';
-                const defaultCategories = getTransactionCategories(defaultType);
-                const calculatedAccounts = calculateBalances();
-
-                let accountOptions = calculatedAccounts.map(account => `
-                    <option value="${account.id}">${account.name} (${formatCurrency(account.currentBalance)})</option>
-                `).join('');
-                
-                if (!accountOptions) {
-                     accountOptions = '<option value="" disabled>Adicione uma conta primeiro!</option>';
-                }
-
-                let categoryOptions = defaultCategories.map(cat => `
-                    <option value="${cat}">${cat}</option>
-                `).join('');
-                
-                const today = new Date().toISOString().substring(0, 10);
-
-                modalContentWrapper.innerHTML = `
-                    <form id="transaction-form" class="p-6">
-                        <h3 class="text-xl font-bold mb-4 text-white">Registrar Nova Transação</h3>
-                        <div class="space-y-4">
-                            <div class="flex space-x-4">
-                                <button type="button" data-type="Receita" id="btn-receita" 
-                                    class="flex-1 py-2 rounded-lg font-semibold transition duration-200 bg-gray-700 text-gray-300 hover:bg-gray-600">
-                                    Receita (+)
-                                </button>
-                                <button type="button" data-type="Despesa" id="btn-despesa" 
-                                    class="flex-1 py-2 rounded-lg font-semibold transition duration-200 bg-red-600 text-white shadow-md">
-                                    Despesa (-)
-                                </button>
-                            </div>
-
-                            <input type="text" name="description" placeholder="Descrição (ex: Almoço, Salário)" 
-                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
-                            <input type="number" name="amount" placeholder="Valor (R$)" min="0.01"
-                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" step="0.01" required />
-                            <select name="accountId" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required>
-                                <option value="">Selecione a Conta</option>
-                                ${accountOptions}
-                            </select>
-                            <select name="category" id="transaction-category" class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required>
-                                <option value="">Selecione a Categoria</option>
-                                ${categoryOptions}
-                            </select>
-                            <input type="date" name="date" value="${today}"
-                                class="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-purple-500 focus:border-purple-500" required />
-                            <input type="hidden" name="type" value="${defaultType}" id="transaction-type" />
-                        </div>
-                        <div class="flex justify-end space-x-4 mt-6">
-                            <button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition duration-200">
-                                Cancelar
-                            </button>
-                            <button type="submit" class="px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-lg hover:bg-purple-700 transition duration-200">
-                                Registrar
-                            </button>
-                        </div>
-                    </form>
-                `;
-
-                const form = document.getElementById('transaction-form');
-                form.addEventListener('submit', handleAddTransaction);
-                setupTransactionTypeToggle(form);
-            }
-        };
-
-        const setupTransactionTypeToggle = (form) => {
-            const btnReceita = document.getElementById('btn-receita');
-            const btnDespesa = document.getElementById('btn-despesa');
-            const inputType = document.getElementById('transaction-type');
-            const selectCategory = document.getElementById('transaction-category');
-
-            const toggleType = (type) => {
-                const isReceita = type === 'Receita';
-                
-                inputType.value = type;
-
-                btnReceita.className = `flex-1 py-2 rounded-lg font-semibold transition duration-200 ${isReceita ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`;
-                btnDespesa.className = `flex-1 py-2 rounded-lg font-semibold transition duration-200 ${!isReceita ? 'bg-red-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`;
-
-                const categories = getTransactionCategories(type);
-                selectCategory.innerHTML = '<option value="">Selecione a Categoria</option>' + categories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
-                selectCategory.value = categories.includes(selectCategory.value) ? selectCategory.value : '';
-            };
-
-            btnReceita.addEventListener('click', () => toggleType('Receita'));
-            btnDespesa.addEventListener('click', () => toggleType('Despesa'));
-        };
-
-        // --- Funções de Manipulação de Dados (CRUD Condicional) ---
-        
-        const handleAddAccount = async (event) => {
+        window.handleAddAccount = async (event) => {
             event.preventDefault();
-            
-            const data = new FormData(event.target);
-            const name = data.get('name');
-            const type = data.get('type');
-            const initialBalance = parseFloat(data.get('initialBalance'));
-
-            if (!name || isNaN(initialBalance)) return;
-
-            const newAccount = {
-                name,
-                type,
-                initialBalance,
-                createdAt: new Date().toISOString(),
-            };
-
-            if (IS_MOCK_MODE) {
-                newAccount.id = 'acc-mock-' + crypto.randomUUID();
-                accounts.push(newAccount);
-                saveLocalData();
-                closeModal();
-                updateUI();
-            } else {
-                if (!db || !userId) return console.error("Database or User not ready.");
-                const accountsColRef = collection(db, `users/${userId}/accounts`);
-                try {
-                    await addDoc(accountsColRef, newAccount);
-                    closeModal();
-                } catch (error) {
-                    console.error('Erro ao adicionar conta:', error);
-                }
-            }
+            const data = Object.fromEntries(new FormData(event.target));
+            const newAccount = { name: data.name, type: data.type, initialBalance: parseFloat(data.initialBalance), createdAt: new Date().toISOString() };
+            try { await addDoc(collection(db, `users/${userId}/accounts`), newAccount); closeModal(); } 
+            catch (e) { console.error("Error adding account:", e); }
         };
 
-        const handleAddTransaction = async (event) => {
+        window.handleAddTransaction = async (event) => {
             event.preventDefault();
-            
-            const data = new FormData(event.target);
-            const transactionData = {
-                description: data.get('description'),
-                amount: parseFloat(data.get('amount')),
-                type: data.get('type'),
-                accountId: data.get('accountId'),
-                category: data.get('category'),
-                date: data.get('date'),
-                createdAt: new Date().toISOString(),
-            };
-
-            if (!transactionData.description || !transactionData.accountId || isNaN(transactionData.amount) || transactionData.amount <= 0) return;
-            
-            if (IS_MOCK_MODE) {
-                transactionData.id = 'tr-mock-' + crypto.randomUUID();
-                transactions.push(transactionData);
-                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-                saveLocalData();
-                closeModal();
-                updateUI();
-            } else {
-                if (!db || !userId) return console.error("Database or User not ready.");
-                const transactionsColRef = collection(db, `users/${userId}/transactions`);
-                try {
-                    await addDoc(transactionsColRef, transactionData);
-                    closeModal();
-                } catch (error) {
-                    console.error('Erro ao adicionar transação:', error);
-                }
+            const data = Object.fromEntries(new FormData(event.target));
+            const newTransaction = { ...data, amount: parseFloat(data.amount), createdAt: new Date().toISOString() };
+            try { await addDoc(collection(db, `users/${userId}/transactions`), newTransaction); closeModal(); }
+            catch (e) { console.error("Error adding transaction:", e); }
+        };
+        
+        window.handleDeleteTransaction = async (id) => {
+            if (confirm('Tem certeza?')) {
+                try { await deleteDoc(doc(db, `users/${userId}/transactions`, id)); }
+                catch (e) { console.error("Error deleting transaction:", e); }
             }
         };
 
-        window.handleDeleteTransaction = async (transactionId) => {
-            // Usando um modal customizado em vez de confirm()
-            if (!confirm('Tem certeza que deseja deletar esta transação?')) return;
+        window.handleAddCategory = async (event, type) => {
+            event.preventDefault();
+            const { name } = Object.fromEntries(new FormData(event.target));
+            const collectionName = type === 'revenue' ? 'revenueCategories' : 'expenseCategories';
+            try { await addDoc(collection(db, `users/${userId}/${collectionName}`), { name, subcategories: [] }); closeModal(); }
+            catch (e) { console.error("Error adding category:", e); }
+        };
 
-            if (IS_MOCK_MODE) {
-                transactions = transactions.filter(t => t.id !== transactionId);
-                saveLocalData();
-                updateUI();
-            } else {
-                if (!db || !userId) return console.error("Database or User not ready.");
-                const transactionDocRef = doc(db, `users/${userId}/transactions`, transactionId);
-                try {
-                    await deleteDoc(transactionDocRef);
-                } catch (error) {
-                    console.error('Erro ao deletar transação:', error);
-                }
+        window.handleDeleteCategory = async (type, id) => {
+            if (confirm('Tem certeza? Todas as subcategorias serão perdidas.')) {
+                const collectionName = type === 'revenue' ? 'revenueCategories' : 'expenseCategories';
+                try { await deleteDoc(doc(db, `users/${userId}/${collectionName}`, id)); }
+                catch (e) { console.error("Error deleting category:", e); }
             }
         };
 
-        // --- Inicialização e Listeners do Firebase ---
+        window.handleAddSubcategory = async (event, type, categoryId) => {
+            event.preventDefault();
+            const { name } = Object.fromEntries(new FormData(event.target));
+            const collectionName = type === 'revenue' ? 'revenueCategories' : 'expenseCategories';
+            const docRef = doc(db, `users/${userId}/${collectionName}`, categoryId);
+            try { await updateDoc(docRef, { subcategories: arrayUnion(name) }); closeModal(); }
+            catch (e) { console.error("Error adding subcategory:", e); }
+        };
 
+        window.handleDeleteSubcategory = async (type, categoryId, subcategoryName) => {
+            const collectionName = type === 'revenue' ? 'revenueCategories' : 'expenseCategories';
+            const docRef = doc(db, `users/${userId}/${collectionName}`, categoryId);
+            try { await updateDoc(docRef, { subcategories: arrayRemove(subcategoryName) }); }
+            catch (e) { console.error("Error deleting subcategory:", e); }
+        };
+
+        // --- APP INITIALIZATION ---
         const setupListeners = () => {
-            if (IS_MOCK_MODE) {
-                loadLocalData(); 
-                updateUI();
-                return;
-            }
-
             if (!db || !userId) return;
-            
-            const accountsColRef = collection(db, `users/${userId}/accounts`);
-            const transactionsColRef = collection(db, `users/${userId}/transactions`);
-
-            onSnapshot(query(accountsColRef), (snapshot) => {
-                accounts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                updateUI();
-            }, (error) => console.error("Erro ao buscar contas:", error));
-
-            onSnapshot(query(transactionsColRef), (snapshot) => {
-                transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-                updateUI();
-            }, (error) => console.error("Erro ao buscar transações:", error));
+            const collections = {
+                accounts: (data) => accounts = data,
+                transactions: (data) => transactions = data.sort((a,b) => new Date(b.date) - new Date(a.date)),
+                revenueCategories: (data) => revenueCategories = data,
+                expenseCategories: (data) => expenseCategories = data,
+            };
+            Object.keys(collections).forEach(key => {
+                onSnapshot(query(collection(db, `users/${userId}/${key}`)), snapshot => {
+                    collections[key](snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                    updateUI();
+                }, error => console.error(`Error fetching ${key}:`, error));
+            });
         };
 
         const showAppContent = () => {
             document.getElementById('loader').classList.add('hidden');
             document.getElementById('content-wrapper').classList.remove('hidden');
             document.getElementById('content-wrapper').classList.add('flex');
-            
             setupListeners();
-        }
+        };
 
         const hideAppContent = () => {
             document.getElementById('content-wrapper').classList.add('hidden');
-            document.getElementById('content-wrapper').classList.remove('flex');
             document.getElementById('loader').classList.remove('hidden');
-            const viewContent = document.getElementById('view-content');
-            if(viewContent) viewContent.innerHTML = '';
-        }
+            userId = null;
+            accounts = []; transactions = []; revenueCategories = []; expenseCategories = [];
+        };
 
         const initApp = () => {
-            if (IS_MOCK_MODE) {
-                console.warn("Modo MOCK detectado.");
-                hideAppContent();
-                openModal('auth');
-                return;
-            }
-
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                onAuthStateChanged(auth, (user) => {
+                onAuthStateChanged(auth, user => {
                     if (user) {
-                        userId = user.uid;
-                        showAppContent();
-                        closeModal(); 
+                        if (!userId) { // Evita recarregamento desnecessário
+                            userId = user.uid;
+                            showAppContent();
+                        }
                     } else {
-                        userId = null;
-                        accounts = [];
-                        transactions = [];
                         hideAppContent();
-                        openModal('auth'); 
+                        openModal(renderAuthModal('login'));
                     }
                 });
-
             } catch (error) {
-                console.error("Erro durante a inicialização do Firebase:", error);
-                document.getElementById('loader').textContent = 'Erro de Configuração do Firebase. Verifique o console.';
+                console.error("Firebase Init Error:", error);
+                document.getElementById('loader').textContent = 'Erro de Configuração do Firebase.';
             }
         };
-
-        // --- Configuração de Eventos Globais ---
         
         document.getElementById('modal-overlay').addEventListener('click', (e) => {
-            if (e.target.id === 'modal-overlay' && !document.getElementById('auth-form')) {
-                closeModal();
-            }
+            if (e.target.id === 'modal-overlay') closeModal();
         });
-
-        document.getElementById('fab-button').addEventListener('click', () => {
-            openModal('transaction');
-        });
-
-        // Disponibiliza funções globais
-        window.setView = setView;
-        window.openModal = openModal;
-        window.closeModal = closeModal;
-        window.handleAddAccount = handleAddAccount;
-        window.handleAddTransaction = handleAddTransaction;
-        window.renderAuthModal = renderAuthModal;
-        window.handleDeleteTransaction = handleDeleteTransaction;
-        window.handleSignOut = handleSignOut;
+        document.getElementById('fab-button').addEventListener('click', () => openTransactionModal());
 
         initApp();
     </script>
