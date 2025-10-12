@@ -1,4 +1,4 @@
-const CACHE_NAME = 'moneyflow-cache-v4'; // Versão do cache atualizada para forçar a renovação
+const CACHE_NAME = 'moneyflow-cache-v5'; // Versão do cache atualizada
 const urlsToCache = [
     './',
     './index.html',
@@ -9,12 +9,12 @@ const urlsToCache = [
     'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js'
 ];
 
-// Instala o Service Worker, pulando a espera e armazenando os assets essenciais em cache
+// Instala o Service Worker e armazena os assets essenciais em cache
 self.addEventListener('install', event => {
     self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => {
-            console.log('Cache aberto e assets armazenados na v4');
+            console.log('Cache v5 aberto e assets armazenados.');
             return cache.addAll(urlsToCache);
         })
     );
@@ -36,18 +36,24 @@ self.addEventListener('activate', event => {
     );
 });
 
-// Intercepta as requisições de rede com a estratégia "Cache First"
+// Intercepta as requisições de rede
 self.addEventListener('fetch', event => {
-    event.respondWith(
-        caches.match(event.request)
-            .then(cachedResponse => {
-                // Se o recurso estiver no cache, retorna ele
-                if (cachedResponse) {
-                    return cachedResponse;
-                }
-                // Se não estiver no cache, busca na rede
-                return fetch(event.request);
+    // Estratégia: Network Falling Back to Cache (para a navegação principal)
+    if (event.request.mode === 'navigate') {
+        event.respondWith(
+            fetch(event.request).catch(() => {
+                // Se a rede falhar, serve o index.html principal do cache
+                return caches.match('./index.html');
             })
+        );
+        return;
+    }
+
+    // Estratégia: Cache First (para todos os outros assets)
+    event.respondWith(
+        caches.match(event.request).then(cachedResponse => {
+            return cachedResponse || fetch(event.request);
+        })
     );
 });
 
