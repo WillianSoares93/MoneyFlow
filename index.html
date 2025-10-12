@@ -639,7 +639,17 @@
         });
         document.getElementById('fab-button').addEventListener('click', () => openTransactionModal());
 
+        // Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => console.log('Service Worker registrado com sucesso:', registration))
+                    .catch(error => console.log('Falha ao registrar Service Worker:', error));
+            });
+        }
+
         initApp();
     </script>
 </body>
 </html>
+
