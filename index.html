@@ -96,7 +96,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, query, onSnapshot, doc, addDoc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, query, onSnapshot, doc, addDoc, deleteDoc, updateDoc, arrayUnion, arrayRemove, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- 1. BLOCO DE CONFIGURAÇÃO PARA DEPLOY NO VERCEL/GITHUB ---
         const USER_FIREBASE_CONFIG = {
@@ -605,8 +605,17 @@
         const initApp = () => {
             try {
                 const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
                 auth = getAuth(app);
+                db = getFirestore(app);
+
+                enableIndexedDbPersistence(db)
+                    .catch((err) => {
+                        if (err.code == 'failed-precondition') {
+                            console.warn('MoneyFlow: A persistência de dados offline falhou, múltiplas abas abertas.');
+                        } else if (err.code == 'unimplemented') {
+                            console.warn('MoneyFlow: Seu navegador não suporta o modo offline.');
+                        }
+                    });
                 
                 onAuthStateChanged(auth, user => {
                     if (user) {
@@ -634,4 +643,3 @@
     </script>
 </body>
 </html>
-
