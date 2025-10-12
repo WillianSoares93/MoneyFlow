@@ -126,6 +126,7 @@
             currentView = newView;
             updateUI();
         };
+        window.setView = setView;
 
         const openModal = (content) => {
             document.getElementById('modal-overlay').classList.remove('hidden');
@@ -138,6 +139,7 @@
             document.getElementById('modal-overlay').classList.remove('flex');
             document.getElementById('modal-content-wrapper').innerHTML = '';
         };
+        window.closeModal = closeModal;
 
         // --- Funções de Renderização de UI ---
 
