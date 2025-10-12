@@ -58,7 +58,7 @@
             <main id="main-content" class="flex-1 pb-16 sm:pb-0 overflow-auto">
                 <!-- Header Mobile -->
                 <header class="bg-gray-800 p-4 sm:p-6 shadow-xl sticky top-0 z-10 sm:hidden">
-                    <h1 class="text-2xl font-bold text-white">Finanças Pessoais</h1>
+                    <h1 id="mobile-header-title" class="text-2xl font-bold text-white">Finanças Pessoais</h1>
                 </header>
                 
                 <!-- Conteúdo da Visão (Dashboard/Contas/etc) -->
@@ -122,10 +122,6 @@
         let accounts = [];
         let transactions = [];
         let currentView = 'dashboard'; // 'dashboard', 'accounts', 'transactions', 'reports'
-
-        // --- Element References ---
-        const navbarContainer = document.getElementById('navbar-container');
-        const viewContent = document.getElementById('view-content');
         
         // --- Funções de Persistência Local (Modo Mock Apenas) ---
         
@@ -137,7 +133,6 @@
             try {
                 localStorage.setItem(LOCAL_STORAGE_KEY_ACCOUNTS, JSON.stringify(accounts));
                 localStorage.setItem(LOCAL_STORAGE_KEY_TRANSACTIONS, JSON.stringify(transactions));
-                // console.log('Dados salvos no localStorage.');
             } catch (e) {
                 console.error('Erro ao salvar no localStorage:', e);
             }
@@ -156,8 +151,6 @@
                     transactions = JSON.parse(storedTransactions);
                     transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
                 }
-                // console.log('Dados carregados do localStorage.');
-
             } catch (e) {
                 console.error('Erro ao carregar do localStorage:', e);
             }
@@ -226,6 +219,7 @@
         // --- Funções de Renderização de UI ---
 
         const renderNavbar = () => {
+            const navbarContainer = document.getElementById('navbar-container');
             const navItems = [
                 { name: 'Visão Geral', view: 'dashboard', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>' },
                 { name: 'Contas', view: 'accounts', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>' },
@@ -260,11 +254,12 @@
                 </div>
             </div>`;
             
-            navbarContainer.innerHTML = navHTML;
-
-            navbarContainer.querySelectorAll('.nav-button').forEach(button => {
-                button.addEventListener('click', () => setView(button.getAttribute('data-view')));
-            });
+            if (navbarContainer) {
+                navbarContainer.innerHTML = navHTML;
+                navbarContainer.querySelectorAll('.nav-button').forEach(button => {
+                    button.addEventListener('click', () => setView(button.getAttribute('data-view')));
+                });
+            }
         };
 
         const renderTransactionItem = (t, calculatedAccounts) => {
@@ -327,6 +322,8 @@
             if (!transactions.length) {
                 transactionsList = '<p class="text-gray-500 text-center py-4">Nenhuma transação registrada ainda.</p>';
             }
+            
+            document.getElementById('mobile-header-title').innerHTML = `<h1>Finanças Pessoais</h1>`;
 
             return `
                 <div class="p-4 sm:p-6 lg:p-8">
@@ -389,9 +386,18 @@
                 accountsGrid = '<p class="text-gray-500 col-span-full text-center py-10">Nenhuma conta cadastrada.</p>';
             }
 
+            document.getElementById('mobile-header-title').innerHTML = `
+                <div class="flex justify-between items-center">
+                    <h1 class="text-2xl font-bold text-white">Contas</h1>
+                    <button onclick="openModal('account')" class="p-2 rounded-full bg-purple-600 text-white">
+                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    </button>
+                </div>
+            `;
+
             return `
                 <div class="p-4 sm:p-6 lg:p-8">
-                    <h1 class="text-3xl font-bold text-white mb-6">Contas e Cartões</h1>
+                    <h1 class="text-3xl font-bold text-white mb-6 hidden sm:block">Contas e Cartões</h1>
                     <div class="mb-6 flex justify-between items-center">
                         <p class="text-lg text-gray-300">Total em Contas: <span class="font-bold ${totalBalance >= 0 ? 'text-green-400' : 'text-red-400'}">${formatCurrency(totalBalance)}</span></p>
                         <button onclick="openModal('account')"
@@ -415,9 +421,11 @@
                 transactionsList = '<p class="text-gray-500 text-center py-10">Nenhuma transação registrada.</p>';
             }
 
+            document.getElementById('mobile-header-title').innerHTML = `<h1>Transações</h1>`;
+
             return `
                 <div class="p-4 sm:p-6 lg:p-8">
-                    <h1 class="text-3xl font-bold text-white mb-6">Todas as Transações</h1>
+                    <h1 class="text-3xl font-bold text-white mb-6 hidden sm:block">Todas as Transações</h1>
                     <div class="mb-6 flex justify-end">
                         <button onclick="openModal('transaction')"
                             class="hidden sm:flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200">
@@ -476,9 +484,11 @@
                 });
             }
 
+            document.getElementById('mobile-header-title').innerHTML = `<h1>Relatórios</h1>`;
+
             return `
                 <div class="p-4 sm:p-6 lg:p-8">
-                    <h1 class="text-3xl font-bold text-white mb-6">Relatórios Avançados (Gastos por Categoria)</h1>
+                    <h1 class="text-3xl font-bold text-white mb-6 hidden sm:block">Relatórios Avançados (Gastos por Categoria)</h1>
                     <div class="bg-gray-800 p-6 rounded-2xl shadow-xl border border-gray-700">
                         <h2 class="text-xl font-bold text-white mb-4">Análise de Despesas</h2>
                         <p class="text-gray-400 mb-6">Total de Despesas Registradas: <span class="font-bold text-red-400">${formatCurrency(totalExpense)}</span></p>
@@ -491,6 +501,7 @@
         };
         
         const renderView = (calculatedAccounts) => {
+            const viewContent = document.getElementById('view-content');
             switch (currentView) {
                 case 'dashboard':
                     viewContent.innerHTML = renderDashboard(calculatedAccounts);
@@ -586,7 +597,6 @@
             const googleBtn = document.getElementById('google-signin-btn');
             googleBtn.addEventListener('click', handleGoogleSignIn);
             
-            // Reabre o modal
             document.getElementById('modal-overlay').classList.remove('hidden');
             document.getElementById('modal-overlay').classList.add('flex');
         };
@@ -597,13 +607,12 @@
             const email = form.email.value;
             const password = form.password.value;
             const errorMessageElement = document.getElementById('auth-error-message');
-            errorMessageElement.textContent = ''; // Limpa a mensagem anterior
+            errorMessageElement.textContent = ''; 
 
             if (IS_MOCK_MODE) {
-                // Modo MOCK: Simula login bem-sucedido
                 errorMessageElement.textContent = 'Modo MOCK: Login simulado com sucesso! Os dados não serão salvos na nuvem.';
                 userId = "MOCK-USER-1234";
-                setupListeners(); // Carrega os dados locais
+                setupListeners(); 
                 closeModal();
                 return;
             }
@@ -614,7 +623,6 @@
                 } else {
                     await createUserWithEmailAndPassword(auth, email, password);
                 }
-                // O onAuthStateChanged tratará a UI após o sucesso
             } catch (error) {
                 console.error("Erro de Autenticação:", error.code, error.message);
                 
@@ -643,7 +651,6 @@
                 accounts = [];
                 transactions = [];
                 currentView = 'dashboard';
-                updateUI();
                 openModal('auth');
                 console.warn("Sessão MOCK encerrada.");
                 return;
@@ -651,7 +658,6 @@
 
             try {
                 await signOut(auth);
-                // onAuthStateChanged cuidará da transição da UI para a tela de login
             } catch (error) {
                 console.error("Erro ao sair:", error);
             }
@@ -659,7 +665,6 @@
 
         // --- Funções do Modal de Dados ---
         
-        // Mantidas as funções renderModalContent, setupTransactionTypeToggle, etc.
         const getTransactionCategories = (type) => {
             return type === 'Receita'
                 ? ['Salário', 'Investimento', 'Venda', 'Presente', 'Outros']
@@ -757,7 +762,6 @@
                     </form>
                 `;
 
-                // Adiciona listeners dinamicamente
                 const form = document.getElementById('transaction-form');
                 form.addEventListener('submit', handleAddTransaction);
                 setupTransactionTypeToggle(form);
@@ -773,17 +777,14 @@
             const toggleType = (type) => {
                 const isReceita = type === 'Receita';
                 
-                // Atualiza o campo hidden
                 inputType.value = type;
 
-                // Atualiza o estilo dos botões
                 btnReceita.className = `flex-1 py-2 rounded-lg font-semibold transition duration-200 ${isReceita ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`;
                 btnDespesa.className = `flex-1 py-2 rounded-lg font-semibold transition duration-200 ${!isReceita ? 'bg-red-600 text-white shadow-md' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`;
 
-                // Atualiza as opções de categoria
                 const categories = getTransactionCategories(type);
                 selectCategory.innerHTML = '<option value="">Selecione a Categoria</option>' + categories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
-                selectCategory.value = categories.includes(selectCategory.value) ? selectCategory.value : ''; // Tenta manter a seleção
+                selectCategory.value = categories.includes(selectCategory.value) ? selectCategory.value : '';
             };
 
             btnReceita.addEventListener('click', () => toggleType('Receita'));
@@ -800,10 +801,9 @@
             const type = data.get('type');
             const initialBalance = parseFloat(data.get('initialBalance'));
 
-            if (!name || initialBalance < 0) return;
+            if (!name || isNaN(initialBalance)) return;
 
             const newAccount = {
-                id: (IS_MOCK_MODE ? 'acc-mock-' : 'acc-') + crypto.randomUUID(),
                 name,
                 type,
                 initialBalance,
@@ -811,15 +811,13 @@
             };
 
             if (IS_MOCK_MODE) {
-                // MOCK MODE: Adiciona ao array local
+                newAccount.id = 'acc-mock-' + crypto.randomUUID();
                 accounts.push(newAccount);
-                saveLocalData(); // Salva no localStorage
+                saveLocalData();
                 closeModal();
                 updateUI();
             } else {
-                // FIREBASE MODE: Adiciona ao Firestore
                 if (!db || !userId) return console.error("Database or User not ready.");
-                // O caminho agora usa o ID de usuário do login:
                 const accountsColRef = collection(db, `users/${userId}/accounts`);
                 try {
                     await addDoc(accountsColRef, newAccount);
@@ -844,27 +842,20 @@
                 createdAt: new Date().toISOString(),
             };
 
-            if (!transactionData.description || !transactionData.accountId || transactionData.amount <= 0) return;
+            if (!transactionData.description || !transactionData.accountId || isNaN(transactionData.amount) || transactionData.amount <= 0) return;
             
-            const newTransaction = {
-                ...transactionData,
-                id: (IS_MOCK_MODE ? 'tr-mock-' : 'tr-') + crypto.randomUUID(),
-            };
-
             if (IS_MOCK_MODE) {
-                // MOCK MODE: Adiciona ao array local e reordena
-                transactions.push(newTransaction);
+                transactionData.id = 'tr-mock-' + crypto.randomUUID();
+                transactions.push(transactionData);
                 transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-                saveLocalData(); // Salva no localStorage
+                saveLocalData();
                 closeModal();
                 updateUI();
             } else {
-                // FIREBASE MODE: Adiciona ao Firestore
                 if (!db || !userId) return console.error("Database or User not ready.");
-                // O caminho agora usa o ID de usuário do login:
                 const transactionsColRef = collection(db, `users/${userId}/transactions`);
                 try {
-                    await addDoc(transactionsColRef, newTransaction);
+                    await addDoc(transactionsColRef, transactionData);
                     closeModal();
                 } catch (error) {
                     console.error('Erro ao adicionar transação:', error);
@@ -873,29 +864,21 @@
         };
 
         window.handleDeleteTransaction = async (transactionId) => {
-            if (confirm(`Tem certeza que deseja deletar a transação ${transactionId}?`)) {
-                
-                if (IS_MOCK_MODE) {
-                    // MOCK MODE: Deleta do array local
-                    const initialLength = transactions.length;
-                    transactions = transactions.filter(t => t.id !== transactionId);
-                    if (transactions.length < initialLength) {
-                        saveLocalData(); // Salva no localStorage após a exclusão
-                        updateUI();
-                    }
-                } else {
-                    // FIREBASE MODE: Deleta do Firestore
-                    if (!db || !userId) return console.error("Database or User not ready.");
-                    const transactionDocRef = doc(db, `users/${userId}/transactions`, transactionId);
+            // Usando um modal customizado em vez de confirm()
+            if (!confirm('Tem certeza que deseja deletar esta transação?')) return;
 
-                    try {
-                        await deleteDoc(transactionDocRef);
-                    } catch (error) {
-                        console.error('Erro ao deletar transação:', error);
-                    }
-                }
+            if (IS_MOCK_MODE) {
+                transactions = transactions.filter(t => t.id !== transactionId);
+                saveLocalData();
+                updateUI();
             } else {
-                console.log('Exclusão de transação cancelada.');
+                if (!db || !userId) return console.error("Database or User not ready.");
+                const transactionDocRef = doc(db, `users/${userId}/transactions`, transactionId);
+                try {
+                    await deleteDoc(transactionDocRef);
+                } catch (error) {
+                    console.error('Erro ao deletar transação:', error);
+                }
             }
         };
 
@@ -904,62 +887,46 @@
         const setupListeners = () => {
             if (IS_MOCK_MODE) {
                 loadLocalData(); 
+                updateUI();
                 return;
             }
 
             if (!db || !userId) return;
             
-            // Note: Os caminhos do Firestore foram simplificados para 'users/{userId}/...'
             const accountsColRef = collection(db, `users/${userId}/accounts`);
             const transactionsColRef = collection(db, `users/${userId}/transactions`);
 
-            // Listener de Contas
             onSnapshot(query(accountsColRef), (snapshot) => {
-                accounts = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    initialBalance: parseFloat(doc.data().initialBalance || 0),
-                }));
+                accounts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 updateUI();
             }, (error) => console.error("Erro ao buscar contas:", error));
 
-            // Listener de Transações
             onSnapshot(query(transactionsColRef), (snapshot) => {
-                transactions = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    amount: parseFloat(doc.data().amount || 0),
-                })).sort((a, b) => new Date(b.date) - new Date(a.date));
+                transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
                 updateUI();
             }, (error) => console.error("Erro ao buscar transações:", error));
         };
 
         const showAppContent = () => {
-             // Esconde loader e mostra conteúdo
             document.getElementById('loader').classList.add('hidden');
             document.getElementById('content-wrapper').classList.remove('hidden');
             document.getElementById('content-wrapper').classList.add('flex');
             
-            // Inicia o App
-            setupListeners(); 
-            updateUI();
+            setupListeners();
         }
 
         const hideAppContent = () => {
-            // Esconde conteúdo e volta para o loader (ou tela de login)
             document.getElementById('content-wrapper').classList.add('hidden');
             document.getElementById('content-wrapper').classList.remove('flex');
             document.getElementById('loader').classList.remove('hidden');
-            document.getElementById('view-content').innerHTML = '';
+            const viewContent = document.getElementById('view-content');
+            if(viewContent) viewContent.innerHTML = '';
         }
 
-        const initApp = async () => {
-            
-            // --- 2. INICIALIZAÇÃO E FLUXO DE AUTENTICAÇÃO ---
-            
+        const initApp = () => {
             if (IS_MOCK_MODE) {
-                console.warn("Modo MOCK detectado. O aplicativo funcionará localmente, mas os dados não serão salvos na nuvem e o login será simulado.");
-                // No modo mock, pulamos a inicialização do Firebase para evitar erros de rede
+                console.warn("Modo MOCK detectado.");
                 hideAppContent();
                 openModal('auth');
                 return;
@@ -972,54 +939,45 @@
                 
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
-                        // Usuário logado: Carrega o aplicativo
                         userId = user.uid;
                         showAppContent();
                         closeModal(); 
                     } else {
-                        // Usuário deslogado: Mostra a tela de login/cadastro
                         userId = null;
+                        accounts = [];
+                        transactions = [];
                         hideAppContent();
                         openModal('auth'); 
                     }
                 });
 
             } catch (error) {
-                console.error("Erro durante a inicialização do Firebase (verifique sua USER_FIREBASE_CONFIG):", error);
-                document.getElementById('loader').classList.add('hidden');
-                document.getElementById('view-content').innerHTML = `
-                    <div class="p-8 text-red-400">
-                        <h2 class="text-2xl font-bold">Erro de Configuração do Firebase</h2>
-                        <p>Por favor, verifique se você substituiu a 'USER_FIREBASE_CONFIG' no código. Detalhes no console.</p>
-                    </div>`;
+                console.error("Erro durante a inicialização do Firebase:", error);
+                document.getElementById('loader').textContent = 'Erro de Configuração do Firebase. Verifique o console.';
             }
         };
 
         // --- Configuração de Eventos Globais ---
         
-        const modalOverlay = document.getElementById('modal-overlay');
-        modalOverlay.addEventListener('click', (e) => {
-            // Só fecha se clicar no overlay, não no modal em si, a menos que seja a tela de AUTH.
+        document.getElementById('modal-overlay').addEventListener('click', (e) => {
             if (e.target.id === 'modal-overlay' && !document.getElementById('auth-form')) {
                 closeModal();
             }
         });
 
         document.getElementById('fab-button').addEventListener('click', () => {
-            if (userId) {
-                openModal('transaction');
-            } else {
-                openModal('auth'); // Redireciona para o login se deslogado
-            }
+            openModal('transaction');
         });
 
-        // Disponibiliza funções globais necessárias para eventos no HTML inline
+        // Disponibiliza funções globais
         window.setView = setView;
         window.openModal = openModal;
         window.closeModal = closeModal;
         window.handleAddAccount = handleAddAccount;
         window.handleAddTransaction = handleAddTransaction;
         window.renderAuthModal = renderAuthModal;
+        window.handleDeleteTransaction = handleDeleteTransaction;
+        window.handleSignOut = handleSignOut;
 
         initApp();
     </script>
