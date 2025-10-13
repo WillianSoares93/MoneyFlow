@@ -1,4 +1,4 @@
-const CACHE_NAME = 'moneyflow-cache-v6'; // Versão do cache atualizada para forçar a renovação
+const CACHE_NAME = 'moneyflow-cache-v7'; // Versão do cache atualizada para forçar a renovação
 const urlsToCache = [
     './',
     './index.html',
@@ -9,18 +9,16 @@ const urlsToCache = [
     'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js'
 ];
 
-// Instala o Service Worker, pulando a espera e armazenando os assets essenciais em cache
 self.addEventListener('install', event => {
     self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => {
-            console.log('[SW v6] Cache aberto e assets armazenados.');
+            console.log('[SW v7] Cache aberto e assets armazenados.');
             return cache.addAll(urlsToCache);
         })
     );
 });
 
-// Ativa o novo Service Worker, limpa caches antigos e assume o controle
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(cacheNames => {
@@ -28,7 +26,7 @@ self.addEventListener('activate', event => {
                 cacheNames
                     .filter(cache => cache !== CACHE_NAME)
                     .map(cache => {
-                        console.log('[SW v6] Deletando cache antigo:', cache);
+                        console.log('[SW v7] Deletando cache antigo:', cache);
                         return caches.delete(cache);
                     })
             );
@@ -36,25 +34,44 @@ self.addEventListener('activate', event => {
     );
 });
 
-// Intercepta as requisições de rede com a estratégia "Stale-While-Revalidate"
 self.addEventListener('fetch', event => {
-    event.respondWith(
-        caches.open(CACHE_NAME).then(cache => {
-            return cache.match(event.request).then(cachedResponse => {
-                const fetchPromise = fetch(event.request).then(networkResponse => {
-                    // Se a resposta da rede for válida, atualiza o cache
-                    if (networkResponse) {
-                        cache.put(event.request, networkResponse.clone());
-                    }
-                    return networkResponse;
-                }).catch(err => {
-                    console.warn('[SW v6] Requisição de rede falhou. Servindo apenas do cache.', err);
-                });
+    // Para requisições de navegação (abrir/atualizar a página)
+    if (event.request.mode === 'navigate') {
+        event.respondWith(
+            // 1. Tenta buscar na rede primeiro
+            fetch(event.request)
+                .then(response => {
+                    // Se conseguir, clona a resposta para poder usar e guardar no cache
+                    const responseToCache = response.clone();
+                    caches.open(CACHE_NAME).then(cache => {
+                        cache.put(event.request, responseToCache);
+                    });
+                    return response;
+                })
+                .catch(() => {
+                    // 2. Se a rede falhar, busca no cache
+                    return caches.match(event.request).then(response => {
+                        // Se encontrar no cache, retorna. Senão, pode-se retornar uma página offline genérica
+                        return response || caches.match('./index.html');
+                    });
+                })
+        );
+        return;
+    }
 
-                // Retorna a resposta do cache imediatamente se existir,
-                // caso contrário, aguarda a resposta da rede.
-                // A rede sempre será consultada em segundo plano para atualizações.
-                return cachedResponse || fetchPromise;
+    // Para todos os outros assets (CSS, JS, imagens)
+    event.respondWith(
+        caches.match(event.request).then(response => {
+            // Retorna do cache se encontrar
+            if (response) {
+                return response;
+            }
+            // Senão, busca na rede, armazena no cache e retorna
+            return fetch(event.request).then(networkResponse => {
+                caches.open(CACHE_NAME).then(cache => {
+                    cache.put(event.request, networkResponse.clone());
+                });
+                return networkResponse;
             });
         })
     );
