@@ -45,6 +45,9 @@
         #fab-button:active {
             transform: scale(0.95);
         }
+        #status-indicator {
+            transition: opacity 0.5s, transform 0.5s;
+        }
     </style>
 </head>
 <body class="bg-gray-900 min-h-screen">
@@ -90,6 +93,9 @@
                 <!-- Conteúdo do Modal (Conta ou Transação/Autenticação) -->
             </div>
         </div>
+
+        <!-- Indicador de Status Offline -->
+        <div id="status-indicator" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-gray-700 text-white text-sm rounded-full shadow-lg opacity-0 transform translate-y-4"></div>
     </div>
 
     <!-- Scripts do Firebase SDK -->
@@ -639,16 +645,39 @@
         });
         document.getElementById('fab-button').addEventListener('click', () => openTransactionModal());
         
-        // Service Worker Registration
+        // --- Service Worker and Status Indicator ---
+        const statusIndicator = document.getElementById('status-indicator');
+        function showStatus(message, isError = false) {
+            statusIndicator.textContent = message;
+            statusIndicator.className = `fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 text-white text-sm rounded-full shadow-lg opacity-0 transform translate-y-4 ${isError ? 'bg-red-600' : 'bg-green-600'}`;
+            statusIndicator.classList.remove('opacity-0', 'translate-y-4');
+            setTimeout(() => {
+                statusIndicator.classList.add('opacity-0', 'translate-y-4');
+            }, 3000);
+        }
+
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').then(registration => {
-                    console.log('SW registrado: ', registration);
+                navigator.serviceWorker.register('/sw.js').then(reg => {
+                    reg.addEventListener('updatefound', () => {
+                        const newWorker = reg.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                showStatus('Nova versão disponível! Atualizando...');
+                            }
+                        });
+                    });
+
+                    console.log('Service Worker Registrado:', reg.scope);
+                    showStatus('Aplicativo pronto para funcionar offline.');
+
                 }).catch(registrationError => {
-                    console.log('SW registro falhou: ', registrationError);
+                    console.error('Falha ao registrar SW:', registrationError);
+                    showStatus('Erro ao instalar modo offline.', true);
                 });
             });
         }
+
 
         initApp();
     </script>
