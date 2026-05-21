@@ -14,27 +14,56 @@
             height: 100vh;
             margin: 0;
             background-color: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 350px;
         }
         .btn-nubank {
             display: inline-block;
             padding: 16px 32px;
-            background-color: #820ad1;
+            background-color: #820ad1; /* Roxo Nubank */
             color: #ffffff;
             text-decoration: none;
             font-weight: bold;
             border-radius: 8px;
-            text-align: center;
             font-size: 16px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-top: 15px;
+            box-shadow: 0 4px 6px rgba(130, 10, 209, 0.3);
+        }
+        .passos {
+            text-align: left;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #555;
+            line-height: 1.6;
         }
     </style>
 </head>
 <body>
 
-    <!-- Link usando a API de redirecionamento da própria Play Store -->
+<div class="container">
+    <h2>Acessar o Nubank</h2>
+    <p style="color: #666; font-size: 14px;">Clique no botão abaixo para ir até o aplicativo.</p>
+    
+    <!-- Link para a Play Store (que abre o app se já instalado) -->
     <a href="https://play.google.com/store/apps/details?id=com.nu.production" class="btn-nubank">
-        Abrir Aplicativo Nubank
+        Ir para o Aplicativo
     </a>
+
+    <div class="passos">
+        <strong>Como prosseguir:</strong>
+        <ol style="padding-left: 20px; margin-top: 5px;">
+            <li>Ao clicar, a página do Nubank se abrirá.</li>
+            <li>Toque no botão verde <strong>"Abrir"</strong> para entrar direto no seu aplicativo.</li>
+        </ol>
+    </div>
+</div>
 
 </body>
 </html>
