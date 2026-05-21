@@ -5,14 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Abrir Nubank</title>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f5f5f5; }
-        .btn-nubank { padding: 16px 32px; background-color: #820ad1; color: #ffffff; text-decoration: none; font-weight: bold; border-radius: 8px; margin-bottom: 20px; }
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .btn-nubank {
+            display: inline-block;
+            padding: 16px 32px;
+            background-color: #820ad1;
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: bold;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 16px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
 
-    <!-- Link FORÇADO para Android usando Intent oficial -->
-    <a href="intent://#Intent;package=com.nu.production;scheme=nubank;end;" class="btn-nubank">Abrir App (Forçado - Android)</a>
+    <!-- Este comando força o Android a iniciar o app como se você estivesse tocando no ícone dele -->
+    <a href="intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.nu.production;end;" class="btn-nubank">
+        Abrir Aplicativo Nubank
+    </a>
 
 </body>
 </html>
+
