@@ -5,47 +5,56 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Abrir Nubank</title>
     <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+
         .btn-nubank {
             display: inline-block;
-            padding: 14px 28px;
+            padding: 16px 32px;
             background-color: #820ad1; /* Roxo do Nubank */
             color: #ffffff;
             text-decoration: none;
-            font-family: sans-serif;
             font-weight: bold;
             border-radius: 8px;
             text-align: center;
-            cursor: pointer;
-            border: none;
             font-size: 16px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: background-color 0.3s;
+            margin-bottom: 20px;
         }
+
         .btn-nubank:hover {
             background-color: #6d08b1;
+        }
+
+        .dica {
+            font-size: 14px;
+            color: #666;
+            max-width: 300px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
 
-    <!-- O Botão -->
-    <button class="btn-nubank" onclick="abrirNubank()">Abrir Aplicativo Nubank</button>
+    <!-- Botão principal usando o protocolo direto -->
+    <a href="nubank://" class="btn-nubank">Abrir App do Nubank</a>
 
-    <script>
-        function abrirNubank() {
-            // 1. Tenta forçar a abertura pelo protocolo direto do app
-            window.location.href = "nubank://";
+    <!-- Botão alternativo usando o link universal da web -->
+    <a href="https://nubank.com.br/" class="btn-nubank" style="background-color: #333;">Abrir Link Universal</a>
 
-            // 2. Cria um "timer" de segurança. 
-            // Se o app NÃO abrir em 2 segundos, significa que falhou (ou o usuário não tem o app).
-            // Aí o script redireciona para a página oficial ou lojas de aplicativos.
-            setTimeout(function() {
-                // Verifica se a página ainda está visível (se o app abrisse, a página ficaria em segundo plano)
-                if (!document.hidden) {
-                    // Redireciona para o site ou para a Play Store/App Store se preferir
-                    window.location.href = "https://nubank.com.br/";
-                }
-            }, 2000);
-        }
-    </script>
+    <p class="dica">
+        <strong>Dica:</strong> Se o primeiro botão não funcionar, pressione e segure o segundo botão ("Link Universal") e escolha a opção para abrir com o aplicativo.
+    </p>
 
 </body>
 </html>
+
