@@ -5,56 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Abrir Nubank</title>
     <style>
-        body {
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f5f5f5;
-        }
-
-        .btn-nubank {
-            display: inline-block;
-            padding: 16px 32px;
-            background-color: #820ad1; /* Roxo do Nubank */
-            color: #ffffff;
-            text-decoration: none;
-            font-weight: bold;
-            border-radius: 8px;
-            text-align: center;
-            font-size: 16px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            transition: background-color 0.3s;
-            margin-bottom: 20px;
-        }
-
-        .btn-nubank:hover {
-            background-color: #6d08b1;
-        }
-
-        .dica {
-            font-size: 14px;
-            color: #666;
-            max-width: 300px;
-            text-align: center;
-        }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f5f5f5; }
+        .btn-nubank { padding: 16px 32px; background-color: #820ad1; color: #ffffff; text-decoration: none; font-weight: bold; border-radius: 8px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
-    <!-- Botão principal usando o protocolo direto -->
-    <a href="nubank://" class="btn-nubank">Abrir App do Nubank</a>
-
-    <!-- Botão alternativo usando o link universal da web -->
-    <a href="https://nubank.com.br/" class="btn-nubank" style="background-color: #333;">Abrir Link Universal</a>
-
-    <p class="dica">
-        <strong>Dica:</strong> Se o primeiro botão não funcionar, pressione e segure o segundo botão ("Link Universal") e escolha a opção para abrir com o aplicativo.
-    </p>
+    <!-- Link FORÇADO para Android usando Intent oficial -->
+    <a href="intent://#Intent;package=com.nu.production;scheme=nubank;end;" class="btn-nubank">Abrir App (Forçado - Android)</a>
 
 </body>
 </html>
-
