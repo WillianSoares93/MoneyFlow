@@ -1,4 +1,4 @@
-1
+2
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -27,18 +27,22 @@
             border-radius: 16px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-        .app-link {
+        .app-btn {
             display: flex;
             flex-direction: column;
             align-items: center;
-            text-decoration: none;
+            background: none;
+            border: none;
+            cursor: pointer;
             color: #333;
             font-weight: bold;
             font-size: 12px;
             text-align: center;
             transition: transform 0.2s;
+            padding: 0;
+            width: 100%;
         }
-        .app-link:hover {
+        .app-btn:hover {
             transform: scale(1.08);
         }
         .icon {
@@ -69,51 +73,69 @@
 <body>
 
     <div class="container">
-        <a href="intent://#Intent;package=com.alibaba.aliexpresshd;scheme=aliexpress;end" class="app-link">
+        <button class="app-btn" onclick="abrirApp('intent://#Intent;package=com.alibaba.aliexpresshd;scheme=aliexpress;end')">
             <div class="icon aliexpress">AE</div>
             AliExpress
-        </a>
+        </button>
 
-        <a href="amazon://home" class="app-link">
+        <button class="app-btn" onclick="abrirApp('intent://#Intent;package=com.amazon.mShop.android.shopping;scheme=amazon;end')">
             <div class="icon amazon">AZ</div>
             Amazon
-        </a>
+        </button>
 
-        <a href="bradescocartoes://" class="app-link">
+        <button class="app-btn" onclick="abrirApp('intent://#Intent;package=br.com.bradesco.cartoes;scheme=bradescocartoes;end')">
             <div class="icon bradesco">BC</div>
             Bradesco
-        </a>
+        </button>
 
-        <a href="https://www.mercadolivre.com.br/" class="app-link">
+        <button class="app-btn" onclick="abrirApp('https://www.mercadolivre.com.br/')">
             <div class="icon mercado-livre">ML</div>
             Mercado Livre
-        </a>
+        </button>
 
-        <a href="mercadopago://home" class="app-link">
+        <button class="app-btn" onclick="abrirApp('mercadopago://home')">
             <div class="icon mercado-pago">MP</div>
             Mercado Pago
-        </a>
+        </button>
 
-        <a href="nubank://home" class="app-link">
+        <button class="app-btn" onclick="abrirAppNubank()">
             <div class="icon nubank">Nu</div>
             Nubank
-        </a>
+        </button>
 
-        <a href="intent://#Intent;package=com.picpay;scheme=picpay;end" class="app-link">
+        <button class="app-btn" onclick="abrirApp('intent://#Intent;package=com.picpay;scheme=picpay;end')">
             <div class="icon picpay">PP</div>
             PicPay
-        </a>
+        </button>
 
-        <a href="shopee://mainapp" class="app-link">
+        <button class="app-btn" onclick="abrirApp('intent://#Intent;package=com.shopee.br;scheme=shopee;end')">
             <div class="icon shopee">SP</div>
             Shopee
-        </a>
+        </button>
 
-        <a href="ton://home" class="app-link">
+        <button class="app-btn" onclick="abrirApp('intent://#Intent;package=br.com.stone.ton;scheme=ton;end')">
             <div class="icon ton">TN</div>
             Ton
-        </a>
+        </button>
     </div>
+
+    <script>
+        // Função geral para abrir a maioria dos aplicativos usando as intents que funcionaram antes
+        function abrirApp(url) {
+            window.location.href = url;
+        }
+
+        // Função exclusiva para o Nubank tratar a restrição do navegador
+        function abrirAppNubank() {
+            // Tenta forçar a abertura pelo protocolo nativo do banco
+            window.location.href = "nubank://home";
+            
+            // Se o sistema ignorar o comando acima em 800ms, tenta o redirecionamento via link de login
+            setTimeout(function() {
+                window.location.href = "https://conta.nubank.com.br/";
+            }, 800);
+        }
+    </script>
 
 </body>
 </html>
