@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meus Atalhos de Apps</title>
+    <title>Meus Atalhos Protegidos</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -15,8 +15,54 @@
             margin: 0;
             padding: 20px;
         }
+        
+        /* Tela de Bloqueio */
+        .lock-screen {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 300px;
+            width: 100%;
+        }
+        .lock-screen h2 {
+            margin-top: 0;
+            color: #333;
+            font-size: 18px;
+        }
+        .lock-screen input {
+            width: 80%;
+            padding: 10px;
+            margin: 15px 0;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 16px;
+        }
+        .lock-screen button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            width: 88%;
+        }
+        .lock-screen button:hover {
+            background-color: #0056b3;
+        }
+        .erro-msg {
+            color: red;
+            font-size: 12px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        /* Container dos Apps (Escondido por padrão) */
         .container {
-            display: grid;
+            display: none; 
             grid-template-columns: repeat(3, 1fr);
             gap: 20px;
             max-width: 400px;
@@ -26,6 +72,7 @@
             border-radius: 16px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
+        
         .app-link {
             display: flex;
             flex-direction: column;
@@ -53,6 +100,7 @@
             font-weight: bold;
             box-shadow: 0 2px 5px rgba(0,0,0,0.15);
         }
+        
         /* Cores das Marcas */
         .aliexpress { background-color: #FF4747; }
         .amazon { background-color: #FF9900; color: #111; }
@@ -67,7 +115,16 @@
 </head>
 <body>
 
-    <div class="container">
+    <div class="lock-screen" id="telaBloqueio">
+        <h2>Acesso Restrito</h2>
+        <p style="font-size: 13px; color: #666; margin: 0;">Digite o código PIN para ver os atalhos</p>
+        <input type="password" id="campoSenha" placeholder="Digite a senha" pattern="[0-9]*" inputmode="numeric">
+        <br>
+        <button onclick="verificarSenha()">Entrar</button>
+        <div class="erro-msg" id="mensagemErro">Senha incorreta! Tente novamente.</div>
+    </div>
+
+    <div class="container" id="painelApps">
         <a href="intent://#Intent;package=com.alibaba.aliexpresshd;scheme=aliexpress;end" class="app-link">
             <div class="icon aliexpress">AE</div>
             AliExpress
@@ -113,6 +170,30 @@
             Ton
         </a>
     </div>
+
+    <script>
+        function verificarSenha() {
+            const senhaDigitada = document.getElementById("campoSenha").value;
+            
+            // Senha atualizada para a solicitada
+            const senhaCorreta = "407016"; 
+
+            if (senhaDigitada === senhaCorreta) {
+                document.getElementById("telaBloqueio").style.display = "none";
+                document.getElementById("painelApps").style.display = "grid";
+            } else {
+                document.getElementById("campoSenha").value = "";
+                document.getElementById("mensagemErro").style.display = "block";
+            }
+        }
+
+        // Permite pressionar "Enter" no teclado para entrar direto
+        document.getElementById("campoSenha").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                verificarSenha();
+            }
+        });
+    </script>
 
 </body>
 </html>
